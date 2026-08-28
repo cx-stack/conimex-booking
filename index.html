@@ -655,12 +655,15 @@ function refreshDepartmentSelects(){
 }
 
 function refreshRoomDependentUI(){
-  const prevRoom = document.getElementById("f_room") ? document.getElementById("f_room").value : "";
+  const roomSel = document.getElementById("f_room");
+  if(!roomSel) return; // #app อาจถูกแทนที่ด้วยหน้าจอ error/setup ไปแล้ว ไม่ต้องอัปเดต UI ที่ไม่มีอยู่จริง
+  const prevRoom = roomSel.value;
   const prevCalRoom = calRoom;
   const activeRooms = ROOMS.filter(isRoomActive);
-  fillSelect(document.getElementById("f_room"), activeRooms, "เลือกห้อง");
-  if(activeRooms.some(r=>r.id===prevRoom)) document.getElementById("f_room").value = prevRoom;
+  fillSelect(roomSel, activeRooms, "เลือกห้อง");
+  if(activeRooms.some(r=>r.id===prevRoom)) roomSel.value = prevRoom;
   const calRoomSel = document.getElementById("calRoomSelect");
+  if(!calRoomSel) return;
   calRoomSel.innerHTML = `<option value="all">ทุกห้อง (ภาพรวม)</option>`;
   ROOMS.forEach(r=>{ const o=document.createElement("option"); o.value=r.id; o.textContent=r.id+" — "+r.name+" ("+r.floor+")"+(isRoomActive(r)?"":" (ปิดใช้งาน)"); calRoomSel.appendChild(o); });
   calRoom = ROOMS.some(r=>r.id===prevCalRoom) ? prevCalRoom : "all";
@@ -670,6 +673,7 @@ function refreshRoomDependentUI(){
 
 function renderVisiblePages(){
   if(modalOpen) return; // don't redraw underneath someone mid-form
+  if(!document.getElementById("page-book")) return; // #app อาจถูกแทนที่ด้วยหน้าจอ error/setup ไปแล้ว
   renderBookingList();
   if(document.getElementById("page-calendar").classList.contains("active")) renderCalendar();
   if(document.getElementById("page-cancelhist").classList.contains("active")) renderCancelHist();
@@ -1782,6 +1786,7 @@ function showSetupScreen(){
     </div>`;
 }
 function showConnectionError(err){
+  clearInterval(pollTimer); // หยุดการรีเฟรชเบื้องหลัง กันไม่ให้ยิง request ซ้ำๆ ใส่หน้าจอ error
   document.getElementById("app").innerHTML = `
     <div style="max-width:560px;margin:40px auto;padding:0 16px;">
       <div class="card">
@@ -1793,7 +1798,7 @@ function showConnectionError(err){
           3) ชื่อแท็บใน Google Sheet ตรงกับ Bookings / EditLogs / CancelLogs
           — ดูรายละเอียดใน setup-guide.md
         </p>
-        <button class="btn btn-secondary btn-sm" onclick="refreshAll()">ลองใหม่</button>
+        <button class="btn btn-secondary btn-sm" onclick="location.reload()">ลองใหม่</button>
       </div>
     </div>`;
 }
