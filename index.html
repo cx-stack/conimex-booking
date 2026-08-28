@@ -1,365 +1,1854 @@
-/**
- * Conimex Room Booking — Backend API (Google Apps Script + Google Sheets)
- * ------------------------------------------------------------------
- * วิธีใช้:
- * 1) สร้าง Google Sheet ใหม่ ตั้งชื่อ 6 แท็บ: Bookings, EditLogs, CancelLogs, Rooms, Departments, Holidays
- * 2) ใส่หัวตาราง (แถวที่ 1) ตามที่ระบุไว้ด้านล่าง (SHEET SCHEMA)
- *    (แท็บ Rooms/Departments/Holidays ใส่แค่หัวตารางไว้ก่อนได้ ปล่อยว่าง — ระบบจะเติมค่าเริ่มต้นให้อัตโนมัติตอนเรียกใช้ครั้งแรก)
- * 3) เปิด Extensions > Apps Script แล้ววางไฟล์นี้ทับของเดิมทั้งหมด
- * 4) Deploy > New deployment > Web app
- *      - Execute as: Me
- *      - Who has access: Anyone
- * 5) คัดลอก Web app URL ไปวางในไฟล์ conimex_booking.html (ตัวแปร APPS_SCRIPT_URL)
- *
- * SHEET SCHEMA (แถวหัวตาราง ต้องสะกดตรงตัวใหญ่เล็กตามนี้)
- * ------------------------------------------------------------------
- * Bookings:    id | name | department | purpose | room | status | multiDay | date | dateStart | dateEnd | timeStart | timeEnd | createdAt
- * EditLogs:    id | bookingId | room | oldData | newData | editorName | editorDept | editNote | timestamp
- * CancelLogs:  id | bookingId | originalName | room | dateLabel | timeLabel | cancelerName | cancelerDept | cancelNote | timestamp
- * Rooms:       id | name | floor | active | closedReason | closedUntil
- * Departments: name
- * Holidays:    id | date | label
- */
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Conimex Room Booking</title>
+<meta name="theme-color" content="#0B5FBF">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Conimex Booking">
+<link rel="manifest" href="data:application/manifest+json,%7B%22name%22%3A%22Conimex%20Room%20Booking%22%2C%22short_name%22%3A%22Conimex%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23F3F9FF%22%2C%22theme_color%22%3A%22%230B5FBF%22%7D">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --navy:#0B5FBF;
+  --navy-2:#1E88E5;
+  --teal:#1976D2;
+  --teal-light:#EAF4FF;
+  --bg:#F3F9FF;
+  --card:#ffffff;
+  --text:#132339;
+  --muted:#6b7c93;
+  --border:#DCEAFB;
+  --green:#2f9e44;
+  --green-bg:#eaf7ed;
+  --red:#e03131;
+  --red-bg:#fdecec;
+  --blue:#0B3D91;
+  --radius:14px;
+  --shadow:0 1px 2px rgba(11,95,191,.06), 0 8px 24px rgba(11,95,191,.08);
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  font-family:'Sarabun',sans-serif;
+  background:var(--bg);
+  color:var(--text);
+  -webkit-font-smoothing:antialiased;
+  min-height:100vh;
+}
+#app{max-width:1080px;margin:0 auto;padding-bottom:88px;}
 
-var DEFAULT_ROOMS = [
-  { id: "M101", name: "ห้องกระจก", floor: "ชั้น 1", active: true },
-  { id: "M102", name: "ห้องหลุยส์", floor: "ชั้น 1", active: true },
-  { id: "M201", name: "หน้าห้องคุณภาณุทัต", floor: "ชั้น 2", active: true },
-  { id: "M202", name: "ห้องโต๊ะดำ", floor: "ชั้น 2", active: true },
-  { id: "M203", name: "ห้องที่วางเครื่องเสียง", floor: "ชั้น 2", active: true },
-  { id: "M204", name: "ห้องฝึกอบรม", floor: "ชั้น 2", active: true },
-  { id: "M205", name: "ห้องชั้นลอยเป่า", floor: "ชั้นลอย", active: true }
+/* header */
+.topbar{
+  background:linear-gradient(135deg,var(--navy) 0%,var(--navy-2) 100%);
+  color:#fff;
+  padding:22px 20px 60px;
+  border-radius:0 0 28px 28px;
+  position:relative;
+  overflow:hidden;
+}
+.topbar::after{
+  content:"";
+  position:absolute;right:-40px;top:-40px;width:180px;height:180px;
+  border-radius:50%;background:rgba(255,255,255,.06);
+}
+.topbar .brand{display:flex;align-items:center;gap:10px;}
+.topbar .brand .mark{
+  width:38px;height:38px;border-radius:10px;background:var(--teal);
+  display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;letter-spacing:.5px;
+  box-shadow:0 4px 12px rgba(15,113,115,.5);
+}
+.topbar .brand .name{font-weight:700;font-size:19px;letter-spacing:.2px;}
+.topbar .brand .sub{font-size:12px;color:rgba(255,255,255,.65);margin-top:1px;}
+.topbar .title{font-size:22px;font-weight:700;margin-top:22px;}
+.topbar .date{font-size:13px;color:rgba(255,255,255,.7);margin-top:4px;}
+.adminGearBtn{
+  position:absolute;top:18px;right:18px;background:rgba(255,255,255,.14);border:none;
+  width:34px;height:34px;border-radius:9px;font-size:16px;cursor:pointer;color:#fff;z-index:2;
+  transition:.15s;
+}
+.adminGearBtn:hover{background:rgba(255,255,255,.26);}
+
+/* nav tabs */
+.navwrap{
+  margin:-38px 14px 0;
+  background:var(--card);
+  border-radius:16px;
+  box-shadow:var(--shadow);
+  display:flex;
+  overflow-x:auto;
+  padding:6px;
+  gap:4px;
+  position:relative;
+  z-index:5;
+}
+.navwrap::-webkit-scrollbar{display:none;}
+.navbtn{
+  flex:1 1 auto;
+  white-space:nowrap;
+  border:none;background:transparent;
+  padding:11px 14px;border-radius:11px;
+  font-family:'Sarabun',sans-serif;font-size:14px;font-weight:600;
+  color:var(--muted);cursor:pointer;transition:.15s;
+}
+.navbtn.active{background:var(--navy);color:#fff;}
+.navbtn:not(.active):hover{background:var(--bg);}
+
+.page{padding:22px 16px 10px;display:none;}
+.page.active{display:block;}
+
+h2.pagetitle{font-size:19px;margin:2px 0 16px;font-weight:700;color:var(--navy);}
+h2.pagetitle .eyebrow{display:block;font-size:11px;font-weight:600;letter-spacing:1.5px;color:var(--teal);text-transform:uppercase;margin-bottom:3px;}
+
+/* live room status board */
+.roomStatusBoard{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px;margin-bottom:18px;}
+.roomStatusCard{
+  background:var(--card);border-radius:14px;border:1px solid var(--border);border-left:6px solid var(--border);
+  box-shadow:var(--shadow);padding:14px;
+}
+.roomStatusCard .rsHead{display:flex;align-items:center;gap:7px;margin-bottom:2px;}
+.roomStatusCard .rsDot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
+.roomStatusCard .rsName{font-weight:700;font-size:13.5px;color:var(--text);}
+.roomStatusCard .rsFloor{font-size:11.5px;color:var(--muted);margin-bottom:10px;margin-left:17px;}
+.roomStatusCard .rsBadge{
+  display:flex;align-items:center;gap:8px;justify-content:center;padding:12px 8px;border-radius:11px;
+  font-weight:800;font-size:16px;letter-spacing:.2px;
+}
+.roomStatusCard .rsEmoji{font-size:20px;line-height:1;}
+.rsBadge.rsAvail{background:var(--green-bg);color:var(--green);}
+.rsBadge.rsBusy{background:var(--red-bg);color:var(--red);}
+.rsBadge.rsUpcoming{background:#FFF6DB;color:#8A6D00;}
+.rsBadge.rsDisabled{background:var(--bg);color:var(--muted);}
+
+.card{
+  background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);
+  padding:20px;margin-bottom:16px;border:1px solid var(--border);
+}
+.card h3{margin:0 0 14px;font-size:15px;font-weight:700;color:var(--navy);}
+
+label{display:block;font-size:13px;font-weight:600;color:var(--text);margin:0 0 6px;}
+.field{margin-bottom:14px;}
+input[type=text],input[type=date],input[type=time],select,textarea{
+  width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;
+  font-family:'Sarabun',sans-serif;font-size:14px;background:#fbfbfc;color:var(--text);
+  transition:.15s;
+}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--teal);background:#fff;}
+textarea{resize:vertical;min-height:56px;}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+@media(max-width:520px){.row2{grid-template-columns:1fr;}}
+
+.segmented{display:flex;background:var(--bg);border-radius:11px;padding:4px;gap:4px;margin-bottom:16px;}
+.segmented button{
+  flex:1;border:none;background:transparent;padding:9px;border-radius:8px;
+  font-family:'Sarabun',sans-serif;font-weight:600;font-size:13.5px;color:var(--muted);cursor:pointer;
+}
+.segmented button.active{background:var(--navy);color:#fff;}
+
+.btn{
+  border:none;border-radius:11px;padding:12px 18px;font-family:'Sarabun',sans-serif;
+  font-weight:700;font-size:14.5px;cursor:pointer;transition:.15s;display:inline-flex;align-items:center;gap:6px;justify-content:center;
+}
+.btn-primary{background:var(--teal);color:#fff;width:100%;}
+.btn-primary:hover{background:#145DA0;}
+.btn-secondary{background:var(--bg);color:var(--navy);border:1.5px solid var(--border);}
+.btn-danger{background:var(--red-bg);color:var(--red);border:1.5px solid #f5c2c2;}
+.btn-ghost{background:transparent;color:var(--teal);}
+.btn-sm{padding:7px 12px;font-size:12.5px;border-radius:8px;}
+
+.msg{padding:11px 14px;border-radius:10px;font-size:13.5px;margin-bottom:14px;font-weight:600;display:none;}
+.msg.show{display:block;}
+.msg.err{background:var(--red-bg);color:var(--red);border:1px solid #f5c2c2;}
+.msg.ok{background:var(--green-bg);color:var(--green);border:1px solid #bfe6c8;}
+
+/* table */
+table{width:100%;border-collapse:collapse;font-size:13px;}
+th{
+  text-align:left;padding:9px 10px;background:var(--bg);color:var(--muted);
+  font-weight:700;font-size:11.5px;text-transform:uppercase;letter-spacing:.4px;
+  border-bottom:1px solid var(--border);
+}
+td{padding:11px 10px;border-bottom:1px solid var(--border);vertical-align:top;}
+tr:last-child td{border-bottom:none;}
+.tablewrap{overflow-x:auto;}
+.empty{text-align:center;color:var(--muted);padding:28px 10px;font-size:13.5px;}
+
+.badge{display:inline-block;padding:3px 9px;border-radius:999px;font-size:11.5px;font-weight:700;}
+.badge.green{background:var(--green-bg);color:var(--green);}
+.badge.red{background:var(--red-bg);color:var(--red);}
+
+/* calendar */
+.calhead{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:8px;flex-wrap:wrap;}
+.calhead .monthlabel{font-weight:700;font-size:16px;color:var(--navy);min-width:130px;text-align:center;}
+.calnavbtn{width:34px;height:34px;border-radius:9px;border:1.5px solid var(--border);background:#fff;cursor:pointer;font-size:15px;color:var(--navy);}
+.roomselect{max-width:260px;}
+.summarybar{display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;}
+.summarychip{background:var(--bg);border-radius:10px;padding:8px 13px;font-size:12.5px;font-weight:600;color:var(--text);display:flex;align-items:center;gap:6px;}
+.dot{width:9px;height:9px;border-radius:50%;display:inline-block;}
+.dot.green{background:var(--green);}
+.dot.red{background:var(--red);}
+
+.calgrid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;}
+.calgrid .dow{text-align:center;font-size:11px;font-weight:700;color:var(--muted);padding-bottom:4px;text-transform:uppercase;letter-spacing:.3px;}
+.daycell{
+  border-radius:10px;min-height:64px;padding:6px 5px;cursor:pointer;border:1.5px solid var(--border);
+  background:#fbfbfc;transition:.12s;position:relative;
+}
+.daycell:hover{border-color:var(--teal);}
+.daycell.othermonth{opacity:.35;}
+.daycell.today{border-color:var(--blue);border-width:2px;}
+.daycell .num{font-size:12.5px;font-weight:700;color:var(--text);}
+.daycell.roomview.avail{background:var(--green-bg);}
+.daycell.roomview.busy{background:var(--red-bg);}
+.daycell.holiday{background:#FFF3F3;border-color:var(--red);border-width:1.5px;}
+.daycell.holiday .num{color:var(--red);}
+.holidaymark{font-size:9px;font-weight:700;color:var(--red);margin-top:4px;line-height:1.25;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;}
+.dotsrow{display:flex;flex-wrap:wrap;gap:2.5px;margin-top:6px;}
+.dotsrow .dot{width:6.5px;height:6.5px;}
+
+/* modal */
+.overlay{
+  position:fixed;inset:0;background:rgba(21,34,56,.45);display:none;
+  align-items:flex-end;justify-content:center;z-index:50;padding:0;
+}
+.overlay.show{display:flex;}
+@media(min-width:640px){.overlay{align-items:center;}}
+.modal{
+  background:#fff;border-radius:20px 20px 0 0;max-width:520px;width:100%;
+  max-height:88vh;overflow-y:auto;padding:22px;animation:slideup .18s ease-out;
+}
+.modal.modalWide{max-width:820px;}
+@media(min-width:640px){.modal{border-radius:18px;}}
+@media(min-width:820px){.modal.modalWide{max-height:82vh;padding:28px 32px;}}
+@keyframes slideup{from{transform:translateY(24px);opacity:0;}to{transform:translateY(0);opacity:1;}}
+.modal .mhead{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;}
+.modal h3{margin:0;font-size:16.5px;color:var(--navy);}
+.modal .closebtn{background:var(--bg);border:none;width:30px;height:30px;border-radius:8px;cursor:pointer;font-size:15px;color:var(--muted);}
+.bookingitem{border:1px solid var(--border);border-radius:11px;padding:12px;margin-bottom:10px;background:#fbfbfc;}
+.bookingitem .brow{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;}
+.bookingitem .bname{font-weight:700;font-size:14px;}
+.bookingitem .bmeta{font-size:12.5px;color:var(--muted);margin-bottom:2px;}
+.bookingitem .actions{display:flex;gap:6px;margin-top:8px;}
+
+.autofield{background:var(--teal-light);border-radius:10px;padding:9px 12px;font-size:13px;color:#0B5FBF;font-weight:600;}
+
+/* success popup (centered, with backdrop) */
+.successOverlay{
+  position:fixed;inset:0;background:rgba(19,35,57,.35);display:flex;align-items:center;justify-content:center;
+  z-index:300;opacity:0;pointer-events:none;transition:.2s ease;
+}
+.successOverlay.show{opacity:1;pointer-events:auto;}
+.successPopup{
+  background:#fff;border-radius:18px;padding:28px 32px;text-align:center;
+  box-shadow:0 20px 50px rgba(11,95,191,.35);transform:scale(.85);transition:.25s cubic-bezier(.34,1.56,.64,1);
+  max-width:300px;
+}
+.successOverlay.show .successPopup{transform:scale(1);}
+.successPopup .successIcon{
+  width:56px;height:56px;border-radius:50%;background:var(--green-bg);color:var(--green);
+  display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700;margin:0 auto 14px;
+}
+.successPopup .successIcon.errorIcon{background:var(--red-bg);color:var(--red);}
+.successPopup .successText{font-size:15.5px;font-weight:700;color:var(--navy);}
+
+/* dashboard */
+.dashClockCard{text-align:center;padding:22px 16px;}
+.dashClock{font-size:44px;font-weight:800;color:var(--navy);letter-spacing:1px;font-variant-numeric:tabular-nums;}
+.dashDate{font-size:14px;color:var(--muted);margin-top:4px;font-weight:600;}
+
+/* free slots board */
+.freeSlotsHint{font-size:12px;color:var(--muted);margin:-4px 0 12px;font-weight:600;}
+.freeSlotsBoard{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;}
+.freeSlotCard{border:1px solid var(--border);border-radius:12px;padding:12px 13px;border-left:4px solid transparent;background:#fbfbfc;}
+.freeSlotCard .fsHead{display:flex;align-items:center;gap:7px;margin-bottom:8px;}
+.freeSlotCard .fsDot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
+.freeSlotCard .fsName{font-weight:700;font-size:13.5px;color:var(--text);}
+.freeSlotCard .fsChips{display:flex;flex-wrap:wrap;gap:6px;}
+.freeSlotChip{font-size:12px;font-weight:700;padding:4px 9px;border-radius:20px;background:var(--green-bg);color:var(--green);white-space:nowrap;}
+.freeSlotChip.fsNow{box-shadow:0 0 0 2px var(--green) inset;}
+.freeSlotEmpty{font-size:12.5px;color:var(--red);font-weight:600;}
+.freeSlotDisabled{font-size:12.5px;color:var(--muted);font-weight:600;}
+
+.legend{display:flex;flex-wrap:wrap;gap:8px;margin:2px 0 14px;}
+.legenditem{display:flex;align-items:center;gap:5px;font-size:11.5px;color:var(--muted);font-weight:600;}
+.legenditem .dot{width:8px;height:8px;}
+
+.small{font-size:12px;color:var(--muted);}
+::-webkit-scrollbar{width:8px;height:8px;}
+::-webkit-scrollbar-thumb{background:#d3d7de;border-radius:8px;}
+.hidden{display:none !important;}
+
+/* site-wide password gate */
+.siteGate{
+  position:fixed;inset:0;background:linear-gradient(160deg,var(--navy),var(--teal));
+  display:flex;align-items:center;justify-content:center;z-index:500;padding:20px;
+}
+.siteGate.hidden{display:none !important;}
+.siteGateCard{
+  background:#fff;border-radius:20px;padding:34px 28px;max-width:340px;width:100%;
+  text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.25);
+}
+.siteGateCard h2{font-size:17px;color:var(--navy);margin-bottom:6px;}
+.siteGateCard p{font-size:13px;color:var(--muted);margin-bottom:18px;}
+.siteGateCard input{
+  width:100%;padding:12px 14px;border:1.5px solid var(--border);border-radius:10px;
+  font-size:14px;margin-bottom:12px;text-align:center;letter-spacing:1px;
+}
+.siteGateCard input:focus{outline:none;border-color:var(--blue);}
+.siteGateRemember{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--muted);font-weight:600;margin:-4px 0 12px;justify-content:center;cursor:pointer;}
+.siteGateRemember input{width:auto;margin:0;padding:0;}
+.siteGateCard .msg{margin-bottom:10px;}
+
+/* admin tabs */
+.adminTabs{display:flex;gap:6px;overflow-x:auto;margin-bottom:14px;padding-bottom:2px;}
+.adminTabBtn{flex-shrink:0;border:1px solid var(--border);background:#fff;color:var(--muted);font-size:12.5px;font-weight:700;padding:7px 12px;border-radius:20px;cursor:pointer;white-space:nowrap;transition:.15s;}
+.adminTabBtn.active{background:var(--blue,#1E88E5);border-color:var(--blue,#1E88E5);color:#fff;}
+.adminTabBtn:not(.active):hover{background:var(--bg);}
+.adminGrid{display:grid;grid-template-columns:1fr;gap:0;}
+.adminGrid .bookingitem{margin-bottom:10px;}
+@media(min-width:760px){
+  .adminGrid{grid-template-columns:1fr 1fr;gap:0 12px;align-content:start;}
+  .adminStatsRow{display:flex;gap:14px;}
+  .adminStatsRow > .card{flex:1;margin-bottom:0 !important;}
+}
+</style>
+</head>
+<body>
+<div id="siteGate" class="siteGate">
+  <div class="siteGateCard">
+    <div class="mark" style="margin:0 auto 14px;">CX</div>
+    <h2>ระบบจองห้องประชุม Conimex</h2>
+    <p>กรุณากรอกรหัสผ่านเพื่อเข้าใช้งาน</p>
+    <input type="password" id="site_pin" placeholder="รหัสผ่าน" autocomplete="off">
+    <label class="siteGateRemember"><input type="checkbox" id="site_remember"> จดจำรหัสผ่านไว้ในเครื่องนี้</label>
+    <div id="siteGateMsg" class="msg"></div>
+    <button class="btn btn-primary" style="width:100%;" onclick="submitSiteGate()">เข้าใช้งาน</button>
+  </div>
+</div>
+<div id="app" class="hidden">
+  <div class="topbar">
+    <button class="adminGearBtn" id="adminGearBtn" title="Admin" onclick="openAdminGate()">⚙️</button>
+    <div class="brand">
+      <div class="mark">CX</div>
+      <div>
+        <div class="name">Conimex</div>
+        <div class="sub">ระบบจองห้องประชุม</div>
+      </div>
+    </div>
+    <div class="title">จองห้องประชุมภายในองค์กร</div>
+    <div class="date" id="todayLabel"></div>
+  </div>
+
+  <div class="navwrap">
+    <button class="navbtn active" data-page="book">จองห้อง</button>
+    <button class="navbtn" data-page="dashboard">แดชบอร์ด</button>
+    <button class="navbtn" data-page="calendar">ปฏิทิน</button>
+    <button class="navbtn" data-page="cancelhist">ประวัติยกเลิก</button>
+    <button class="navbtn" data-page="edithist">ประวัติแก้ไข</button>
+  </div>
+
+  <!-- PAGE 1: BOOK -->
+  <div class="page active" id="page-book">
+    <h2 class="pagetitle"><span class="eyebrow">แบบฟอร์ม</span>จองห้องประชุม</h2>
+
+    <div class="card">
+      <div id="bookMsg" class="msg"></div>
+      <form id="bookForm" novalidate>
+        <div class="field">
+          <label>ชื่อผู้จอง</label>
+          <input type="text" id="f_name" required placeholder="ชื่อ-นามสกุล">
+        </div>
+        <div class="field">
+          <label>แผนก</label>
+          <select id="f_dept" required></select>
+        </div>
+        <div class="field" id="f_dept_other_wrap" style="display:none;">
+          <label>ระบุแผนก</label>
+          <input type="text" id="f_dept_other" placeholder="ระบุชื่อแผนก">
+        </div>
+        <div class="field">
+          <label>วัตถุประสงค์ในการจอง</label>
+          <textarea id="f_purpose" required placeholder="เช่น ประชุมทีมประจำสัปดาห์"></textarea>
+        </div>
+        <div class="field">
+          <label>ห้องประชุม</label>
+          <select id="f_room" required></select>
+        </div>
+
+        <div class="field">
+          <label>รูปแบบการจอง</label>
+          <div class="segmented">
+            <button type="button" class="active" data-mode="single">จองวันเดียว</button>
+            <button type="button" data-mode="multi">จองหลายวัน</button>
+          </div>
+        </div>
+
+        <div id="singleDateWrap">
+          <div class="field"><label>วันที่</label><input type="date" id="f_date"></div>
+        </div>
+        <div id="multiDateWrap" class="hidden">
+          <div class="row2">
+            <div class="field"><label>วันที่เริ่มต้น</label><input type="date" id="f_dateStart"></div>
+            <div class="field"><label>วันที่สิ้นสุด</label><input type="date" id="f_dateEnd"></div>
+          </div>
+        </div>
+
+        <div class="row2">
+          <div class="field"><label id="timeStartLabel">เวลาเริ่มต้น</label><input type="time" id="f_timeStart" required></div>
+          <div class="field"><label id="timeEndLabel">เวลาสิ้นสุด</label><input type="time" id="f_timeEnd" required></div>
+        </div>
+
+        <button type="submit" class="btn btn-primary" id="bookSubmitBtn">ยืนยันการจอง ✅</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+        <h3 style="margin:0;">แสดงการจอง</h3>
+        <input type="date" id="listDateFilter" style="max-width:170px;">
+      </div>
+      <div class="tablewrap">
+        <table id="bookingListTable">
+          <thead><tr><th>ชื่อผู้จอง</th><th>ห้อง</th><th>เวลา</th><th>วัตถุประสงค์</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- PAGE: DASHBOARD -->
+  <div class="page" id="page-dashboard">
+    <h2 class="pagetitle"><span class="eyebrow">ภาพรวมสำหรับทุกคน</span>แดชบอร์ดห้องประชุม</h2>
+
+    <div class="card dashClockCard">
+      <div class="dashClock" id="dashClock">--:--:--</div>
+      <div class="dashDate" id="dashDate"></div>
+    </div>
+
+    <h3 style="font-size:14px;color:var(--navy);margin:4px 2px 10px;">สถานะห้องประชุมตอนนี้</h3>
+    <div class="roomStatusBoard" id="roomStatusBoardDashboard"></div>
+
+    <div class="card">
+      <h3>ช่วงเวลาว่างวันนี้ (แยกตามห้อง)</h3>
+      <div class="freeSlotsHint" id="freeSlotsHint"></div>
+      <div class="freeSlotsBoard" id="freeSlotsBoard"></div>
+    </div>
+
+    <div class="card">
+      <h3>ตารางการจองวันนี้</h3>
+      <div class="tablewrap">
+        <table id="dashScheduleTable">
+          <thead><tr><th>เวลา</th><th>ห้อง</th><th>ผู้จอง</th><th>แผนก</th><th>วัตถุประสงค์</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- PAGE 2: CALENDAR -->
+  <div class="page" id="page-calendar">
+    <h2 class="pagetitle"><span class="eyebrow">ภาพรวม</span>ปฏิทินการจองห้อง</h2>
+
+    <div class="card">
+      <div class="calhead">
+        <button class="calnavbtn" id="calPrev">‹</button>
+        <div class="monthlabel" id="calMonthLabel"></div>
+        <button class="calnavbtn" id="calNext">›</button>
+      </div>
+      <div class="field" style="margin-bottom:12px;">
+        <label>เลือกห้อง</label>
+        <select id="calRoomSelect" class="roomselect">
+          <option value="all">ทุกห้อง (ภาพรวม)</option>
+        </select>
+      </div>
+      <div class="summarybar" id="calSummary"></div>
+      <div class="legend" id="calLegend"></div>
+      <div class="calgrid" id="calGrid"></div>
+    </div>
+  </div>
+
+  <!-- PAGE 3: CANCEL HISTORY -->
+  <div class="page" id="page-cancelhist">
+    <h2 class="pagetitle"><span class="eyebrow">บันทึก</span>ประวัติการยกเลิกการจอง</h2>
+    <div class="card">
+      <div class="tablewrap">
+        <table id="cancelHistTable">
+          <thead><tr><th>ผู้จองเดิม</th><th>ห้อง</th><th>วันที่/เวลาที่จอง</th><th>ผู้ยกเลิก</th><th>แผนก</th><th>หมายเหตุ</th><th>วันเวลาที่ยกเลิก</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- PAGE 4: EDIT HISTORY -->
+  <div class="page" id="page-edithist">
+    <h2 class="pagetitle"><span class="eyebrow">บันทึก</span>ประวัติการแก้ไขการจอง</h2>
+    <div class="card">
+      <div class="tablewrap">
+        <table id="editHistTable">
+          <thead><tr><th>ห้อง</th><th>ข้อมูลเดิม</th><th>ข้อมูลใหม่</th><th>ผู้แก้ไข</th><th>แผนก</th><th>หมายเหตุ</th><th>วันเวลาที่แก้ไข</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="overlay"><div class="modal" id="modalBody"></div></div>
+<div class="successOverlay" id="successOverlay">
+  <div class="successPopup">
+    <div class="successIcon">✓</div>
+    <div class="successText" id="successText"></div>
+  </div>
+</div>
+<div class="successOverlay" id="errorOverlay" onclick="if(event.target===this) hideErrorPopup()">
+  <div class="successPopup">
+    <div class="successIcon errorIcon">!</div>
+    <div class="successText" id="errorText"></div>
+    <button class="btn btn-primary" style="margin-top:16px;width:100%;" onclick="hideErrorPopup()">รับทราบ</button>
+  </div>
+</div>
+
+<script>
+/* =====================================================================
+   BACKEND SETUP — Google Sheets + Apps Script (ฟรี)
+   วางลิงก์ "Web app URL" ที่ได้จากการ Deploy Apps Script ตรงนี้
+   วิธีทำ: ดูคู่มือ setup-guide.md ที่แนบมาให้
+   ===================================================================== */
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyzG35JZifx82hhv1YlHPyuDty-UMAwQWTle4Oble4q-D9AnV1ATUQgFsYO0WBvg1PCOw/exec";
+const CONFIG_IS_PLACEHOLDER = APPS_SCRIPT_URL.includes("วางลิงก์");
+// รหัสผ่านเข้าหน้าแอดมิน — เปลี่ยนเป็นรหัสของคุณเองก่อนใช้งานจริง (ไม่ควรบอกรหัสนี้กับคนนอกทีมดูแลระบบ)
+const ADMIN_PASSCODE = "cxdreamy";
+// รหัสผ่านเข้าหน้าเว็บ (ก่อนถึงหน้าจองห้อง) — เปลี่ยนเป็นรหัสของคุณเองก่อนใช้งานจริง แจกให้เฉพาะพนักงานในบริษัท
+const SITE_PASSCODE = "cxscgp";
+/* ===================== CONFIG ===================== */
+let ROOMS = [
+  {id:"M101", name:"ห้องกระจก", floor:"ชั้น 1"},
+  {id:"M102", name:"ห้องหลุยส์", floor:"ชั้น 1"},
+  {id:"M201", name:"หน้าห้องคุณภาณุทัต", floor:"ชั้น 2"},
+  {id:"M202", name:"ห้องโต๊ะดำ", floor:"ชั้น 2"},
+  {id:"M203", name:"ห้องที่วางเครื่องเสียง", floor:"ชั้น 2"},
+  {id:"M204", name:"ห้องฝึกอบรม", floor:"ชั้น 2"},
+  {id:"M205", name:"ห้องชั้นลอยเป่า", floor:"ชั้นลอย"},
 ];
-
-var DEFAULT_DEPARTMENTS = [
+let DEPARTMENTS = [
   "Asset Performance Management","Blow Mold","Customer Experience and CSR","Customer Success",
   "Decoration and Tubing","Factory Sourcing","Injection","Mold Management","Operation",
   "Order to Cash","People Caring and Administration","Product Development","Production Scheduling",
   "Purchase to Pay","Quality Assurance and Management System","Recycled Mat. Operation",
-  "Warehouse and Logistics","Director's Office","Safety","IT"
+  "Warehouse and Logistics","Director's Office","Safety","IT","อื่นๆระบุ"
 ];
-
-function doGet(e) {
-  var lock = LockService.getScriptLock();
-  var result;
-  try {
-    lock.waitLock(15000);
-    var action = e.parameter.action;
-    var data = e.parameter.data ? JSON.parse(e.parameter.data) : {};
-
-    if (action === "list") result = listAll();
-    else if (action === "createBooking") result = createBookingFn(data);
-    else if (action === "editBooking") result = editBookingFn(data);
-    else if (action === "cancelBooking") result = cancelBookingFn(data);
-    else if (action === "addRoom") result = addRoomFn(data);
-    else if (action === "editRoom") result = editRoomFn(data);
-    else if (action === "deleteRoom") result = deleteRoomFn(data);
-    else if (action === "addDepartment") result = addDepartmentFn(data);
-    else if (action === "deleteDepartment") result = deleteDepartmentFn(data);
-    else if (action === "addHoliday") result = addHolidayFn(data);
-    else if (action === "deleteHoliday") result = deleteHolidayFn(data);
-    else result = { error: "unknown_action" };
-  } catch (err) {
-    result = { error: err.message };
-  } finally {
-    try { lock.releaseLock(); } catch (e2) {}
-  }
-  return ContentService.createTextOutput(JSON.stringify(result))
-    .setMimeType(ContentService.MimeType.JSON);
+// วันหยุด/วันปิดทำการ — ตั้งค่าได้จากหน้าแอดมิน ระบบจะบล็อกไม่ให้จองในวันเหล่านี้ (ข้อมูลมาจากแท็บ Holidays ใน Google Sheet)
+let HOLIDAYS = [];
+function isHoliday(dateStr){ return HOLIDAYS.find(h=>h.date===dateStr) || null; }
+const DOW_TH = ["อา","จ","อ","พ","พฤ","ศ","ส"];
+const ROOM_COLORS = ["#1E88E5","#43A047","#FB8C00","#8E24AA","#E53935","#00ACC1","#6D4C41","#3949AB","#00897B","#D81B60"];
+// สีประจำห้องคำนวณจาก id แบบ hash คงที่ ไม่เปลี่ยนแม้จะเพิ่ม/ลบ/สลับลำดับห้องอื่น
+function roomColor(id){
+  let hash = 0;
+  for(let i=0;i<id.length;i++){ hash = (hash*31 + id.charCodeAt(i)) & 0xffffffff; }
+  return ROOM_COLORS[Math.abs(hash) % ROOM_COLORS.length];
 }
+function isRoomActive(r){ return r.active !== false && r.active !== "FALSE" && r.active !== "false"; }
+const MONTH_TH = ["มกราคม","กุมภาพันธ์","มีนาคม","เมษายน","พฤษภาคม","มิถุนายน","กรกฎาคม","สิงหาคม","กันยายน","ตุลาคม","พฤศจิกายน","ธันวาคม"];
 
-/* ===================== SHEET HELPERS ===================== */
-function getSheet(name) {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(name);
-  if (!sheet) throw new Error("ไม่พบแท็บชื่อ '" + name + "' กรุณาตรวจสอบชื่อแท็บใน Google Sheet");
-  return sheet;
-}
+/* ===================== STATE ===================== */
+let bookings = [];
+let editLogs = [];
+let cancelLogs = [];
+let bookMode = "single";
+let calMonth = new Date(); calMonth.setDate(1);
+let calRoom = "all";
+let dataReady = false;
 
-function headersOf(sheet) {
-  return sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-}
-
-// คอลัมน์เหล่านี้เก็บ "วันที่ล้วนๆ" แบบ YYYY-MM-DD (ไม่ใช่ timestamp เต็มรูปแบบ)
-// ต้องบังคับให้ Google Sheets เก็บเป็นข้อความเสมอ ไม่งั้น Sheets จะแปลงเป็น Date อัตโนมัติ
-// แล้วอ่านกลับมาเพี้ยนเป็น ISO string ที่มีเวลา/timezone ติดมาด้วย (เช่น 2026-12-30T17:00:00.000Z)
-var DATE_ONLY_FIELDS = ["date", "dateStart", "dateEnd", "closedUntil"];
-// คอลัมน์เหล่านี้เก็บ "เวลาล้วนๆ" แบบ HH:mm — ต้องบังคับเป็นข้อความด้วยเหตุผลเดียวกัน
-// ไม่งั้น Sheets จะแปลงเป็น Time object (ซึ่งพอ serialize จะเพี้ยนเป็นวันที่ 1899-12-30 ติดมาด้วย)
-var TIME_ONLY_FIELDS = ["timeStart", "timeEnd"];
-var TEXT_FORCE_FIELDS = DATE_ONLY_FIELDS.concat(TIME_ONLY_FIELDS);
-
-function formatDateOnly(v) {
-  // ถ้าค่าที่อ่านได้ดันเป็น Date object (เช่น จากแถวเก่าที่เคยถูก Sheets แปลงไปแล้ว หรือมีคนพิมพ์ในชีตตรงๆ)
-  // ให้แปลงกลับเป็น YYYY-MM-DD ตามโซนเวลาไทย เพื่อไม่ให้วันที่คลาดเคลื่อน
-  if (Object.prototype.toString.call(v) === "[object Date]") {
-    return Utilities.formatDate(v, "Asia/Bangkok", "yyyy-MM-dd");
-  }
-  return v;
-}
-
-function formatTimeOnly(v) {
-  // เช่นเดียวกับ formatDateOnly แต่คืนค่าเป็น HH:mm — ใช้ได้แม้กับแถวเก่าที่เคยถูกแปลงไปแล้ว
-  // (แม้ค่าจะมีวินาทีเพี้ยนติดมาจาก floating-point rounding ของ Sheets ก็ยังพอใช้เวลานาที ได้ใกล้เคียงที่สุด)
-  if (Object.prototype.toString.call(v) === "[object Date]") {
-    return Utilities.formatDate(v, "Asia/Bangkok", "HH:mm");
-  }
-  return v;
-}
-
-function sheetToObjects(sheet) {
-  var values = sheet.getDataRange().getValues();
-  if (values.length < 2) return [];
-  var headers = values[0];
-  var rows = [];
-  for (var i = 1; i < values.length; i++) {
-    var obj = {};
-    for (var j = 0; j < headers.length; j++) {
-      var v = values[i][j];
-      var h = headers[j];
-      if (DATE_ONLY_FIELDS.indexOf(h) !== -1) obj[h] = formatDateOnly(v);
-      else if (TIME_ONLY_FIELDS.indexOf(h) !== -1) obj[h] = formatTimeOnly(v);
-      else obj[h] = v;
-    }
-    rows.push(obj);
-  }
-  return rows;
-}
-
-function findRowNumById(sheet, id) {
-  var values = sheet.getDataRange().getValues();
-  var headers = values[0];
-  var idCol = headers.indexOf("id");
-  for (var i = 1; i < values.length; i++) {
-    if (String(values[i][idCol]) === String(id)) return i + 1; // 1-based row number
-  }
-  return -1;
-}
-
-function appendRowFromObject(sheet, obj) {
-  var headers = headersOf(sheet);
-  var startRow = sheet.getLastRow() + 1;
-  var row = headers.map(function (h) {
-    var v = obj[h];
-    return v === undefined || v === null ? "" : v;
-  });
-  // ตั้งฟอร์แมตคอลัมน์วันที่/เวลาล้วนๆ ให้เป็นข้อความ ก่อนเขียนค่า กัน Sheets แปลงเป็น Date/Time อัตโนมัติ
-  headers.forEach(function (h, idx) {
-    if (TEXT_FORCE_FIELDS.indexOf(h) !== -1) {
-      sheet.getRange(startRow, idx + 1).setNumberFormat("@");
-    }
-  });
-  sheet.getRange(startRow, 1, 1, row.length).setValues([row]);
-}
-
-function updateRowFields(sheet, rowNum, patch) {
-  var headers = headersOf(sheet);
-  headers.forEach(function (h, idx) {
-    if (Object.prototype.hasOwnProperty.call(patch, h)) {
-      var cell = sheet.getRange(rowNum, idx + 1);
-      if (TEXT_FORCE_FIELDS.indexOf(h) !== -1) cell.setNumberFormat("@");
-      cell.setValue(patch[h]);
-    }
-  });
-}
-
-/* ===================== BUSINESS LOGIC ===================== */
-function listAll() {
-  var roomsSheet = getSheet("Rooms");
-  var rooms = sheetToObjects(roomsSheet);
-  if (rooms.length === 0) {
-    // เติมห้องเริ่มต้นให้อัตโนมัติในการเรียกใช้ครั้งแรก
-    DEFAULT_ROOMS.forEach(function (r) { appendRowFromObject(roomsSheet, r); });
-    rooms = DEFAULT_ROOMS;
-  }
-
-  var deptSheet = getSheet("Departments");
-  var deptRows = sheetToObjects(deptSheet);
-  if (deptRows.length === 0) {
-    DEFAULT_DEPARTMENTS.forEach(function (name) { appendRowFromObject(deptSheet, { name: name }); });
-    deptRows = DEFAULT_DEPARTMENTS.map(function (name) { return { name: name }; });
-  }
-  var departments = deptRows.map(function (r) { return r.name; });
-
-  var holidays = sheetToObjects(getSheet("Holidays"));
-
-  return {
-    bookings: sheetToObjects(getSheet("Bookings")),
-    editLogs: sheetToObjects(getSheet("EditLogs")),
-    cancelLogs: sheetToObjects(getSheet("CancelLogs")),
-    rooms: rooms,
-    departments: departments,
-    holidays: holidays
-  };
-}
-
-// Mirrors the overlap-check logic in the web app, run server-side for safety.
-function findConflictServer(candidate, excludeId) {
-  var bookings = sheetToObjects(getSheet("Bookings"));
-  var ds1 = candidate.multiDay ? candidate.dateStart : candidate.date;
-  var de1 = candidate.multiDay ? candidate.dateEnd : candidate.date;
-  for (var i = 0; i < bookings.length; i++) {
-    var b = bookings[i];
-    if (b.status !== "active") continue;
-    if (excludeId && String(b.id) === String(excludeId)) continue;
-    if (b.room !== candidate.room) continue;
-    var ds2 = b.multiDay ? b.dateStart : b.date;
-    var de2 = b.multiDay ? b.dateEnd : b.date;
-    var dateOverlap = ds1 <= de2 && ds2 <= de1;
-    var timeOverlap = candidate.timeStart < b.timeEnd && b.timeStart < candidate.timeEnd;
-    if (dateOverlap && timeOverlap) return b;
-  }
-  return null;
-}
-
-// ป้องกันการจองย้อนหลัง โดยอิงเขตเวลาของสเปรดชีต (ปกติตรงกับเขตเวลาไทยถ้าสร้างชีตในไทย)
-function getNowParts() {
-  var tz = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();
-  var now = new Date();
-  return {
-    date: Utilities.formatDate(now, tz, "yyyy-MM-dd"),
-    time: Utilities.formatDate(now, tz, "HH:mm")
-  };
-}
-function isPastServer(dateStr, timeStr) {
-  var n = getNowParts();
-  if (dateStr < n.date) return true;
-  if (dateStr === n.date && timeStr < n.time) return true;
+const roomName = id => { const r = ROOMS.find(x=>x.id===id); return r? (r.id+" ("+r.name+") "+r.floor) : id; };
+const deptDisplay = d => d;
+const pad2 = n => String(n).padStart(2,"0");
+const todayStr = () => { const d=new Date(); return d.getFullYear()+"-"+pad2(d.getMonth()+1)+"-"+pad2(d.getDate()); };
+const fmtDateTH = s => { if(!s) return ""; const [y,m,d]=s.split("-"); return d+" "+MONTH_TH[parseInt(m,10)-1]+" "+y; };
+const fmtDateRange = b => b.multiDay ? (fmtDateTH(b.dateStart)+" – "+fmtDateTH(b.dateEnd)) : fmtDateTH(b.date);
+const fmtTimeRange = b => b.timeStart+" – "+b.timeEnd+(b.multiDay?" (ทุกวัน)":"");
+const nowLabel = () => { const d=new Date(); return fmtDateTH(d.getFullYear()+"-"+pad2(d.getMonth()+1)+"-"+pad2(d.getDate()))+" "+pad2(d.getHours())+":"+pad2(d.getMinutes())+" น."; };
+const uid = () => "b"+Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+const nowHHMM = () => { const d=new Date(); return pad2(d.getHours())+":"+pad2(d.getMinutes()); };
+function isPastDateTime(dateStr, timeStr){
+  const t = todayStr();
+  if(dateStr < t) return true;
+  if(dateStr === t && timeStr < nowHHMM()) return true;
   return false;
 }
+// Keeps a date+time input pair from allowing past values: sets min=today on the date
+// field, dynamically sets min=now on the time field whenever the date is today, AND
+// actively clamps any past time the user manages to type/scroll in back up to "now".
+const DATETIME_SYNC_FNS = [];
+function applyDateTimeMin(dateInputId, timeInputId, msgElId){
+  const dateEl = document.getElementById(dateInputId);
+  const timeEl = document.getElementById(timeInputId);
+  if(!dateEl || !timeEl) return;
+  dateEl.min = todayStr();
+  const sync = () => {
+    if(dateEl.value === todayStr()){
+      const nm = nowHHMM();
+      timeEl.min = nm;
+      if(timeEl.value && timeEl.value < nm){
+        timeEl.value = nm;
+        if(msgElId) showMsg(msgElId, "เวลาที่เลือกผ่านมาแล้ว ระบบปรับเป็นเวลาปัจจุบันให้อัตโนมัติ", false, true);
+      }
+    } else {
+      timeEl.removeAttribute("min");
+    }
+  };
+  sync();
+  dateEl.addEventListener("change", sync);
+  timeEl.addEventListener("change", sync);
+  DATETIME_SYNC_FNS.push(sync);
+}
+// Re-check every 20s in case a field is left open while the clock ticks forward.
+setInterval(()=>{ DATETIME_SYNC_FNS.forEach(fn=>{ try{ fn(); }catch(e){} }); }, 20000);
 
-// เช็กว่าช่วงวันที่ของการจอง (candidate) ไปทับกับวันหยุดที่ตั้งไว้หรือไม่ — คืนค่า holiday object ถ้าทับ, null ถ้าไม่ทับ
-function findHolidayInRangeServer(candidate) {
-  var holidays = sheetToObjects(getSheet("Holidays"));
-  if (holidays.length === 0) return null;
-  var ds = candidate.multiDay ? candidate.dateStart : candidate.date;
-  var de = candidate.multiDay ? candidate.dateEnd : candidate.date;
-  for (var i = 0; i < holidays.length; i++) {
-    var hd = String(holidays[i].date);
-    if (hd >= ds && hd <= de) return holidays[i];
+/* ===================== APPS SCRIPT API (Google Sheets as the database) ===================== */
+// GET-only requests (no custom headers) avoid CORS-preflight issues with Apps Script Web Apps.
+async function apiCall(action, data){
+  const url = APPS_SCRIPT_URL + "?action=" + encodeURIComponent(action) +
+    (data ? "&data=" + encodeURIComponent(JSON.stringify(data)) : "");
+  const res = await fetch(url);
+  if(!res.ok) throw new Error("เชื่อมต่อ Apps Script ไม่สำเร็จ (HTTP "+res.status+")");
+  const json = await res.json();
+  if(json && json.error) throw new Error(json.error === "conflict" ? "conflict" : json.error);
+  return json;
+}
+
+function normalizeBoolean(v){ return v === true || v === "TRUE" || v === "true"; }
+function normalizeBookingRow(b){ return { ...b, multiDay: normalizeBoolean(b.multiDay) }; }
+function safeParseJSON(v, fallback){ try{ return typeof v==="string" ? JSON.parse(v) : (v||fallback); }catch(e){ return fallback; } }
+function normalizeEditLogRow(l){ return { ...l, oldData: safeParseJSON(l.oldData,{}), newData: safeParseJSON(l.newData,{}) }; }
+
+let modalOpen = false;
+let pollTimer = null;
+
+async function refreshAll(){
+  try{
+    const data = await apiCall("list", null);
+    bookings = (data.bookings||[]).map(normalizeBookingRow);
+    editLogs = (data.editLogs||[]).map(normalizeEditLogRow);
+    cancelLogs = data.cancelLogs||[];
+    if(data.rooms && data.rooms.length){ ROOMS = data.rooms; }
+    if(data.departments && data.departments.length){ DEPARTMENTS = [...data.departments, "อื่นๆระบุ"]; }
+    HOLIDAYS = data.holidays || [];
+    dataReady = true;
+    refreshRoomDependentUI();
+    refreshDepartmentSelects();
+    renderVisiblePages();
+  }catch(err){
+    console.error(err);
+    showConnectionError(err);
   }
-  return null;
+}
+function refreshDepartmentSelects(){
+  const sel = document.getElementById("f_dept");
+  if(sel){ const prev = sel.value; fillSelect(sel, DEPARTMENTS, "เลือกแผนก"); sel.value = DEPARTMENTS.includes(prev) ? prev : ""; }
 }
 
-function createBookingFn(booking) {
-  var startDate = booking.multiDay ? booking.dateStart : booking.date;
-  if (isPastServer(startDate, booking.timeStart)) return { error: "ไม่สามารถจองวันหรือเวลาที่ผ่านมาแล้วได้" };
-  var holiday = findHolidayInRangeServer(booking);
-  if (holiday) return { error: "วันที่ " + holiday.date + " เป็นวันหยุด (" + holiday.label + ")" };
-  var conflict = findConflictServer(booking, null);
-  if (conflict) return { error: "conflict", conflict: conflict };
-  appendRowFromObject(getSheet("Bookings"), booking);
-  return { success: true };
+function refreshRoomDependentUI(){
+  const roomSel = document.getElementById("f_room");
+  if(!roomSel) return; // #app อาจถูกแทนที่ด้วยหน้าจอ error/setup ไปแล้ว ไม่ต้องอัปเดต UI ที่ไม่มีอยู่จริง
+  const prevRoom = roomSel.value;
+  const prevCalRoom = calRoom;
+  const activeRooms = ROOMS.filter(isRoomActive);
+  fillSelect(roomSel, activeRooms, "เลือกห้อง");
+  if(activeRooms.some(r=>r.id===prevRoom)) roomSel.value = prevRoom;
+  const calRoomSel = document.getElementById("calRoomSelect");
+  if(!calRoomSel) return;
+  calRoomSel.innerHTML = `<option value="all">ทุกห้อง (ภาพรวม)</option>`;
+  ROOMS.forEach(r=>{ const o=document.createElement("option"); o.value=r.id; o.textContent=r.id+" — "+r.name+" ("+r.floor+")"+(isRoomActive(r)?"":" (ปิดใช้งาน)"); calRoomSel.appendChild(o); });
+  calRoom = ROOMS.some(r=>r.id===prevCalRoom) ? prevCalRoom : "all";
+  calRoomSel.value = calRoom;
+  renderRoomStatusBoard();
 }
 
-function editBookingFn(payload) {
-  // payload = { id, patch, logEntry }
-  var sheet = getSheet("Bookings");
-  var rowNum = findRowNumById(sheet, payload.id);
-  if (rowNum === -1) return { error: "not_found" };
-
-  var current = sheetToObjects(sheet)[rowNum - 2];
-  var merged = {};
-  for (var k in current) merged[k] = current[k];
-  for (var k2 in payload.patch) merged[k2] = payload.patch[k2];
-
-  var startDate = merged.multiDay ? merged.dateStart : merged.date;
-  if (isPastServer(startDate, merged.timeStart)) return { error: "ไม่สามารถแก้ไขไปเป็นวันหรือเวลาที่ผ่านมาแล้วได้" };
-  var holiday = findHolidayInRangeServer(merged);
-  if (holiday) return { error: "วันที่ " + holiday.date + " เป็นวันหยุด (" + holiday.label + ")" };
-
-  var conflict = findConflictServer(merged, payload.id);
-  if (conflict) return { error: "conflict", conflict: conflict };
-
-  updateRowFields(sheet, rowNum, payload.patch);
-  appendRowFromObject(getSheet("EditLogs"), payload.logEntry);
-  return { success: true };
+function renderVisiblePages(){
+  if(modalOpen) return; // don't redraw underneath someone mid-form
+  if(!document.getElementById("page-book")) return; // #app อาจถูกแทนที่ด้วยหน้าจอ error/setup ไปแล้ว
+  renderBookingList();
+  if(document.getElementById("page-calendar").classList.contains("active")) renderCalendar();
+  if(document.getElementById("page-cancelhist").classList.contains("active")) renderCancelHist();
+  if(document.getElementById("page-edithist").classList.contains("active")) renderEditHist();
+  if(document.getElementById("page-dashboard").classList.contains("active")) renderDashboardSchedule();
 }
 
-function cancelBookingFn(payload) {
-  // payload = { id, logEntry }
-  var sheet = getSheet("Bookings");
-  var rowNum = findRowNumById(sheet, payload.id);
-  if (rowNum === -1) return { error: "not_found" };
-  updateRowFields(sheet, rowNum, { status: "cancelled" });
-  appendRowFromObject(getSheet("CancelLogs"), payload.logEntry);
-  return { success: true };
+function startPolling(){
+  pollTimer = setInterval(refreshAll, 5000);
+  window.addEventListener("focus", refreshAll);
+  document.addEventListener("visibilitychange", ()=>{ if(!document.hidden) refreshAll(); });
+  // Room status (available / in-meeting / upcoming) depends only on the clock,
+  // so re-render it on its own faster tick even between data refreshes.
+  setInterval(renderRoomStatusBoard, 15000);
 }
 
-/* ===================== ROOMS (admin panel) ===================== */
-function addRoomFn(room) {
-  // room = { id, name, floor, active }
-  var sheet = getSheet("Rooms");
-  if (findRowNumById(sheet, room.id) !== -1) return { error: "room_id_exists" };
-  if (room.active === undefined) room.active = true;
-  appendRowFromObject(sheet, room);
-  return { success: true };
+// The Apps Script backend re-checks for conflicts and appends the row atomically
+// (using LockService), so this is the authoritative, race-safe write path.
+// We update the local `bookings` array optimistically right after the write succeeds,
+// then let refreshAll() sync fully in the background — this means the person sees
+// their result immediately instead of waiting for a second full round-trip to Google.
+async function saveNewBooking(booking){
+  const res = await apiCall("createBooking", booking);
+  bookings.push(normalizeBookingRow(booking));
+  refreshAll();
+  return res;
+}
+async function updateBookingAndLog(id, patch, logEntry){
+  const res = await apiCall("editBooking", { id, patch, logEntry });
+  const b = bookings.find(x=>x.id===id);
+  if(b) Object.assign(b, normalizeBookingRow(patch));
+  refreshAll();
+  return res;
+}
+async function cancelBookingAndLog(id, logEntry){
+  const res = await apiCall("cancelBooking", { id, logEntry });
+  const b = bookings.find(x=>x.id===id);
+  if(b) b.status = "cancelled";
+  refreshAll();
+  return res;
 }
 
-function editRoomFn(payload) {
-  // payload = { id, patch } — patch can include name, floor, and/or active
-  var sheet = getSheet("Rooms");
-  var rowNum = findRowNumById(sheet, payload.id);
-  if (rowNum === -1) return { error: "not_found" };
-  updateRowFields(sheet, rowNum, payload.patch);
-  return { success: true };
+
+/* ===================== OVERLAP LOGIC ===================== */
+function rangesForBooking(b){
+  return { ds: b.multiDay ? b.dateStart : b.date, de: b.multiDay ? b.dateEnd : b.date, ts: b.timeStart, te: b.timeEnd };
+}
+function dateOverlap(ds1,de1,ds2,de2){ return ds1 <= de2 && ds2 <= de1; }
+function timeOverlap(ts1,te1,ts2,te2){ return ts1 < te2 && ts2 < te1; }
+
+function findConflict(candidate, excludeId){
+  const c = rangesForBooking(candidate);
+  return bookings.find(b=>{
+    if(b.status!=="active") return false;
+    if(excludeId && b.id===excludeId) return false;
+    if(b.room !== candidate.room) return false;
+    const e = rangesForBooking(b);
+    return dateOverlap(c.ds,c.de,e.ds,e.de) && timeOverlap(c.ts,c.te,e.ts,e.te);
+  });
 }
 
-function deleteRoomFn(payload) {
-  // payload = { id }
-  var bookings = sheetToObjects(getSheet("Bookings"));
-  var hasActive = bookings.some(function (b) { return b.room === payload.id && b.status === "active"; });
-  if (hasActive) return { error: "room_has_active_bookings" };
-
-  var sheet = getSheet("Rooms");
-  var rowNum = findRowNumById(sheet, payload.id);
-  if (rowNum === -1) return { error: "not_found" };
-  sheet.deleteRow(rowNum);
-  return { success: true };
+/* ===================== INIT UI ===================== */
+function fillSelect(el, items, placeholder){
+  el.innerHTML = "";
+  if(placeholder){ const o=document.createElement("option"); o.value=""; o.textContent=placeholder; o.disabled=true; o.selected=true; el.appendChild(o); }
+  items.forEach(v=>{
+    const o = document.createElement("option");
+    if(typeof v === "object"){ o.value=v.id; o.textContent = v.id+" — "+v.name+" ("+v.floor+")"; }
+    else { o.value=v; o.textContent=v; }
+    el.appendChild(o);
+  });
 }
 
-/* ===================== DEPARTMENTS (admin panel) ===================== */
-function findRowNumByField(sheet, fieldName, value) {
-  var values = sheet.getDataRange().getValues();
-  var headers = values[0];
-  var col = headers.indexOf(fieldName);
-  if (col === -1) return -1;
-  for (var i = 1; i < values.length; i++) {
-    if (String(values[i][col]) === String(value)) return i + 1; // 1-based row number
+function initStaticUI(){
+  document.getElementById("todayLabel").textContent = fmtDateTH(todayStr());
+  fillSelect(document.getElementById("f_dept"), DEPARTMENTS, "เลือกแผนก");
+  fillSelect(document.getElementById("f_room"), ROOMS, "เลือกห้อง");
+  const calRoomSel = document.getElementById("calRoomSelect");
+  ROOMS.forEach(r=>{ const o=document.createElement("option"); o.value=r.id; o.textContent=r.id+" — "+r.name+" ("+r.floor+")"; calRoomSel.appendChild(o); });
+  document.getElementById("listDateFilter").value = todayStr();
+  document.getElementById("f_date").value = todayStr();
+
+  applyDateTimeMin("f_date","f_timeStart","bookMsg");
+  applyDateTimeMin("f_dateStart","f_timeStart","bookMsg");
+  document.getElementById("f_dateEnd").min = todayStr();
+  document.getElementById("f_dateStart").addEventListener("change", ()=>{
+    const v = document.getElementById("f_dateStart").value;
+    document.getElementById("f_dateEnd").min = v || todayStr();
+  });
+
+  document.getElementById("f_dept").addEventListener("change", e=>{
+    document.getElementById("f_dept_other_wrap").style.display = e.target.value === "อื่นๆระบุ" ? "block" : "none";
+  });
+
+  document.querySelectorAll(".segmented button[data-mode]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      document.querySelectorAll(".segmented button[data-mode]").forEach(b=>b.classList.remove("active"));
+      btn.classList.add("active");
+      bookMode = btn.dataset.mode;
+      document.getElementById("singleDateWrap").classList.toggle("hidden", bookMode!=="single");
+      document.getElementById("multiDateWrap").classList.toggle("hidden", bookMode!=="multi");
+      document.getElementById("timeStartLabel").textContent = bookMode==="multi" ? "เวลาเริ่มต้น (ทุกวัน)" : "เวลาเริ่มต้น";
+      document.getElementById("timeEndLabel").textContent = bookMode==="multi" ? "เวลาสิ้นสุด (ทุกวัน)" : "เวลาสิ้นสุด";
+    });
+  });
+
+  document.querySelectorAll(".navbtn").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      document.querySelectorAll(".navbtn").forEach(b=>b.classList.remove("active"));
+      btn.classList.add("active");
+      document.querySelectorAll(".page").forEach(p=>p.classList.remove("active"));
+      document.getElementById("page-"+btn.dataset.page).classList.add("active");
+      if(btn.dataset.page==="calendar") renderCalendar();
+      if(btn.dataset.page==="cancelhist") renderCancelHist();
+      if(btn.dataset.page==="edithist") renderEditHist();
+      if(btn.dataset.page==="dashboard") renderDashboardSchedule();
+    });
+  });
+
+  document.getElementById("bookForm").addEventListener("submit", onSubmitBooking);
+  document.getElementById("listDateFilter").addEventListener("change", renderBookingList);
+  document.getElementById("calPrev").addEventListener("click", ()=>{ calMonth.setMonth(calMonth.getMonth()-1); renderCalendar(); });
+  document.getElementById("calNext").addEventListener("click", ()=>{ calMonth.setMonth(calMonth.getMonth()+1); renderCalendar(); });
+  document.getElementById("calRoomSelect").addEventListener("change", e=>{ calRoom = e.target.value; renderCalendar(); });
+  document.getElementById("overlay").addEventListener("click", e=>{ if(e.target.id==="overlay") closeModal(); });
+}
+
+function showToast(text){
+  const el = document.getElementById("successOverlay");
+  document.getElementById("successText").textContent = text;
+  el.classList.add("show");
+  clearTimeout(el._timer);
+  el._timer = setTimeout(()=>el.classList.remove("show"), 1700);
+}
+
+function showErrorPopup(text){
+  const el = document.getElementById("errorOverlay");
+  document.getElementById("errorText").textContent = text;
+  el.classList.add("show");
+}
+function hideErrorPopup(){
+  document.getElementById("errorOverlay").classList.remove("show");
+}
+
+function showMsg(elId, text, ok, skipPopup){
+  const el = document.getElementById(elId);
+  el.textContent = text; el.className = "msg show " + (ok?"ok":"err");
+  setTimeout(()=>{ el.classList.remove("show"); }, 4500);
+  if(!ok && !skipPopup) showErrorPopup(text); // แจ้งเตือนตรงกลางจอด้วย เผื่อผู้ใช้ไม่เห็นข้อความสีแดงเล็กๆ
+}
+
+// ใช้ห่อปุ่มที่กดแล้วต้องรอ Apps Script ตอบกลับ (ช้ากว่า API ทั่วไป) ให้ผู้ใช้เห็นว่า
+// ระบบกำลังทำงานอยู่ ไม่ใช่ปุ่มค้าง — ปิดปุ่มชั่วคราวและเปลี่ยนข้อความระหว่างรอ
+function setBtnLoading(btn, loading, loadingText){
+  if(!btn) return;
+  if(loading){
+    if(btn.dataset.originalText === undefined) btn.dataset.originalText = btn.textContent;
+    btn.textContent = loadingText || "กำลังบันทึก...";
+    btn.disabled = true;
+  } else {
+    if(btn.dataset.originalText !== undefined) btn.textContent = btn.dataset.originalText;
+    btn.disabled = false;
   }
-  return -1;
 }
 
-function addDepartmentFn(payload) {
-  // payload = { name }
-  var sheet = getSheet("Departments");
-  if (findRowNumByField(sheet, "name", payload.name) !== -1) return { error: "department_exists" };
-  appendRowFromObject(sheet, { name: payload.name });
-  return { success: true };
+/* ===================== BOOK SUBMIT ===================== */
+async function onSubmitBooking(e){
+  e.preventDefault();
+  const name = document.getElementById("f_name").value.trim();
+  let dept = document.getElementById("f_dept").value;
+  if(dept === "อื่นๆระบุ"){
+    const other = document.getElementById("f_dept_other").value.trim();
+    if(!other){ showMsg("bookMsg","กรุณาระบุชื่อแผนก"); return; }
+    dept = other;
+  }
+  const purpose = document.getElementById("f_purpose").value.trim();
+  const room = document.getElementById("f_room").value;
+  const timeStart = document.getElementById("f_timeStart").value;
+  const timeEnd = document.getElementById("f_timeEnd").value;
+
+  if(!name || !dept || !purpose || !room || !timeStart || !timeEnd){ showMsg("bookMsg","กรุณากรอกข้อมูลให้ครบถ้วน"); return; }
+  if(timeStart >= timeEnd){ showMsg("bookMsg","เวลาสิ้นสุดต้องมากกว่าเวลาเริ่มต้น"); return; }
+
+  const candidate = { room, timeStart, timeEnd, multiDay: bookMode==="multi" };
+  if(bookMode==="single"){
+    const date = document.getElementById("f_date").value;
+    if(!date){ showMsg("bookMsg","กรุณาเลือกวันที่"); return; }
+    candidate.date = date;
+  } else {
+    const dateStart = document.getElementById("f_dateStart").value;
+    const dateEnd = document.getElementById("f_dateEnd").value;
+    if(!dateStart || !dateEnd){ showMsg("bookMsg","กรุณาเลือกวันที่เริ่มต้นและสิ้นสุด"); return; }
+    if(dateStart > dateEnd){ showMsg("bookMsg","วันที่สิ้นสุดต้องไม่ก่อนวันที่เริ่มต้น"); return; }
+    candidate.dateStart = dateStart; candidate.dateEnd = dateEnd;
+  }
+
+  const startDate = bookMode==="single" ? candidate.date : candidate.dateStart;
+  if(isPastDateTime(startDate, timeStart)){
+    showMsg("bookMsg","ไม่สามารถจองวันหรือเวลาที่ผ่านมาแล้วได้ กรุณาเลือกวันเวลาปัจจุบันหรืออนาคต");
+    return;
+  }
+
+  const {ds: hDs, de: hDe} = rangesForBooking(candidate);
+  for(let d=hDs; d<=hDe; ){
+    const h = isHoliday(d);
+    if(h){ showMsg("bookMsg", `ไม่สามารถจองได้ วันที่ ${fmtDateTH(d)} เป็นวันหยุด (${esc(h.label)})`); return; }
+    const dt = new Date(d); dt.setDate(dt.getDate()+1);
+    d = dt.getFullYear()+"-"+pad2(dt.getMonth()+1)+"-"+pad2(dt.getDate());
+  }
+
+  const conflict = findConflict(candidate, null);
+  if(conflict){
+    showMsg("bookMsg", `ห้อง ${conflict.room} ถูกจองแล้วโดย "${conflict.name}" (${conflict.department}) ช่วง ${fmtDateRange(conflict)} เวลา ${fmtTimeRange(conflict)} กรุณาเลือกเวลา/ห้องอื่น`);
+    return;
+  }
+
+  const booking = { id: uid(), name, department: dept, purpose, room, status:"active", createdAt: new Date().toISOString(), ...candidate };
+  const submitBtn = document.getElementById("bookSubmitBtn");
+  submitBtn.disabled = true;
+  submitBtn.textContent = "กำลังบันทึก...";
+  try{
+    await saveNewBooking(booking);
+  }catch(err){
+    if(err.message === "conflict"){ showMsg("bookMsg","ห้องนี้เพิ่งถูกจองไปโดยคนอื่นในช่วงเวลาเดียวกัน กรุณาลองใหม่"); }
+    else { showMsg("bookMsg","บันทึกไม่สำเร็จ: "+err.message); }
+    return;
+  }finally{
+    submitBtn.disabled = false;
+    submitBtn.textContent = "ยืนยันการจอง ✅";
+  }
+  showToast("จองห้องสำเร็จ");
+  e.target.reset();
+  document.getElementById("f_date").value = todayStr();
+  bookMode = "single";
+  document.querySelectorAll(".segmented button[data-mode]").forEach(b=>b.classList.toggle("active", b.dataset.mode==="single"));
+  document.getElementById("singleDateWrap").classList.remove("hidden");
+  document.getElementById("multiDateWrap").classList.add("hidden");
+  document.getElementById("f_dept_other_wrap").style.display = "none";
+  renderBookingList();
 }
 
-function deleteDepartmentFn(payload) {
-  // payload = { name }
-  var sheet = getSheet("Departments");
-  var rowNum = findRowNumByField(sheet, "name", payload.name);
-  if (rowNum === -1) return { error: "not_found" };
-  sheet.deleteRow(rowNum);
-  return { success: true };
+/* ===================== LIVE ROOM STATUS BOARD ===================== */
+const UPCOMING_THRESHOLD_MIN = 30; // นับว่า "กำลังจะมีประชุม" ถ้าเริ่มภายในกี่นาทีข้างหน้า
+function timeToMinutes(hhmm){ if(!hhmm) return null; const [h,m] = hhmm.split(":").map(Number); return h*60+m; }
+function nowMinutes(){ const d = new Date(); return d.getHours()*60 + d.getMinutes(); }
+
+function computeRoomStatus(room){
+  if(!isRoomActive(room)) return "disabled";
+  const t = todayStr();
+  const nowMin = nowMinutes();
+  const todaysBookings = bookings.filter(b=>{
+    if(b.status!=="active" || b.room!==room.id) return false;
+    const {ds,de} = rangesForBooking(b);
+    return t >= ds && t <= de;
+  });
+  for(const b of todaysBookings){
+    const s = timeToMinutes(b.timeStart), e = timeToMinutes(b.timeEnd);
+    if(s!==null && e!==null && nowMin >= s && nowMin < e) return "busy";
+  }
+  for(const b of todaysBookings){
+    const s = timeToMinutes(b.timeStart);
+    if(s!==null && s > nowMin && s - nowMin <= UPCOMING_THRESHOLD_MIN) return "upcoming";
+  }
+  return "available";
 }
 
-/* ===================== HOLIDAYS (admin panel) ===================== */
-function addHolidayFn(payload) {
-  // payload = { id, date, label }
-  var sheet = getSheet("Holidays");
-  if (findRowNumByField(sheet, "date", payload.date) !== -1) return { error: "holiday_exists" };
-  appendRowFromObject(sheet, payload);
-  return { success: true };
+const STATUS_META = {
+  available: { emoji:"🟢", label:"ว่าง", cls:"rsAvail" },
+  busy:      { emoji:"🔴", label:"กำลังประชุม", cls:"rsBusy" },
+  upcoming:  { emoji:"🟡", label:"กำลังจะมีประชุม", cls:"rsUpcoming" },
+  disabled:  { emoji:"⚪", label:"ปิดใช้งาน", cls:"rsDisabled" },
+};
+
+function renderRoomStatusBoard(){
+  if(!dataReady) return;
+  const html = ROOMS.map(r=>{
+    const status = computeRoomStatus(r);
+    const meta = STATUS_META[status];
+    const closureNote = status==="disabled" ? roomClosureNote(r) : "";
+    return `
+      <div class="roomStatusCard" style="border-left-color:${roomColor(r.id)}">
+        <div class="rsHead">
+          <span class="rsDot" style="background:${roomColor(r.id)}"></span>
+          <span class="rsName">${esc(r.id)} — ${esc(r.name)}</span>
+        </div>
+        <div class="rsFloor">${esc(r.floor)}</div>
+        <div class="rsBadge ${meta.cls}"><span class="rsEmoji">${meta.emoji}</span>${meta.label}</div>
+        ${closureNote}
+      </div>`;
+  }).join("");
+  ["roomStatusBoard","roomStatusBoardDashboard"].forEach(id=>{
+    const el = document.getElementById(id);
+    if(el) el.innerHTML = html;
+  });
 }
 
-function deleteHolidayFn(payload) {
-  // payload = { date }
-  var sheet = getSheet("Holidays");
-  var rowNum = findRowNumByField(sheet, "date", payload.date);
-  if (rowNum === -1) return { error: "not_found" };
-  sheet.deleteRow(rowNum);
-  return { success: true };
+/* ===================== DASHBOARD PAGE ===================== */
+function startDashboardClock(){
+  const tick = () => {
+    const clockEl = document.getElementById("dashClock");
+    const dateEl = document.getElementById("dashDate");
+    if(!clockEl) return;
+    const d = new Date();
+    clockEl.textContent = pad2(d.getHours())+":"+pad2(d.getMinutes())+":"+pad2(d.getSeconds());
+    dateEl.textContent = fmtDateTH(todayStr());
+  };
+  tick();
+  setInterval(tick, 1000);
 }
+
+function renderDashboardSchedule(){
+  const tbody = document.querySelector("#dashScheduleTable tbody");
+  if(!tbody || !dataReady) return;
+  const rows = bookingsOnDate(todayStr()).slice().sort((a,b)=> (a.timeStart||"").localeCompare(b.timeStart||""));
+  if(rows.length===0){ tbody.innerHTML = `<tr><td colspan="5" class="empty">วันนี้ยังไม่มีการจอง</td></tr>`; return; }
+  tbody.innerHTML = rows.map(b=>`
+    <tr>
+      <td>${esc(fmtTimeRange(b))}</td>
+      <td><span class="rsDot" style="background:${roomColor(b.room)};display:inline-block;margin-right:5px;"></span>${esc(b.room)}</td>
+      <td>${esc(b.name)}</td>
+      <td>${esc(b.department)}</td>
+      <td>${esc(b.purpose)}</td>
+    </tr>`).join("");
+  renderFreeSlotsBoard();
+}
+
+/* ===== ช่วงเวลาว่างวันนี้ (แยกตามห้อง) ===== */
+const DAY_START_MIN = 8*60;   // 08:00 — เวลาเริ่มทำการ (ปรับได้ตรงนี้)
+const DAY_END_MIN   = 18*60;  // 18:00 — เวลาปิดทำการ (ปรับได้ตรงนี้)
+function fmtHM(min){ return pad2(Math.floor(min/60))+":"+pad2(min%60); }
+
+// คืนค่าช่วงเวลาที่ "ว่าง" ของห้องหนึ่งๆ ในวันที่กำหนด โดยตัดช่วงที่ถูกจองออกจากเวลาทำการ
+function computeFreeSlots(roomId, dateStr){
+  const busy = bookingsOnDate(dateStr)
+    .filter(b=>b.room===roomId)
+    .map(b=>({s: timeToMinutes(b.timeStart), e: timeToMinutes(b.timeEnd)}))
+    .filter(x=>x.s!==null && x.e!==null)
+    .sort((a,b)=>a.s-b.s);
+
+  // รวมช่วงที่ทับซ้อน/ติดกันให้เป็นช่วงเดียว
+  const merged = [];
+  for(const b of busy){
+    const clS = Math.max(b.s, DAY_START_MIN), clE = Math.min(b.e, DAY_END_MIN);
+    if(clE<=clS) continue;
+    if(merged.length && clS <= merged[merged.length-1].e){
+      merged[merged.length-1].e = Math.max(merged[merged.length-1].e, clE);
+    } else {
+      merged.push({s:clS, e:clE});
+    }
+  }
+
+  const free = [];
+  let cursor = DAY_START_MIN;
+  for(const b of merged){
+    if(b.s > cursor) free.push({s:cursor, e:b.s});
+    cursor = Math.max(cursor, b.e);
+  }
+  if(cursor < DAY_END_MIN) free.push({s:cursor, e:DAY_END_MIN});
+  return free;
+}
+
+function renderFreeSlotsBoard(){
+  const el = document.getElementById("freeSlotsBoard");
+  const hintEl = document.getElementById("freeSlotsHint");
+  if(!el || !dataReady) return;
+  if(hintEl) hintEl.textContent = `ในเวลาทำการ ${fmtHM(DAY_START_MIN)}–${fmtHM(DAY_END_MIN)} น.`;
+
+  const today = todayStr();
+  const nowMin = timeToMinutes(pad2(new Date().getHours())+":"+pad2(new Date().getMinutes()));
+
+  el.innerHTML = ROOMS.map(r=>{
+    const disabled = !isRoomActive(r);
+    let body;
+    if(disabled){
+      const bits = ["⚪ ปิดใช้งาน"];
+      if(r.closedReason) bits.push(esc(r.closedReason));
+      if(r.closedUntil) bits.push("ถึง "+esc(fmtDateTH(r.closedUntil)));
+      body = `<div class="freeSlotDisabled">${bits.join(" · ")}</div>`;
+    } else {
+      const slots = computeFreeSlots(r.id, today);
+      if(slots.length===0){
+        body = `<div class="freeSlotEmpty">ไม่มีช่วงว่างวันนี้</div>`;
+      } else {
+        body = `<div class="fsChips">` + slots.map(s=>{
+          const isNow = nowMin!==null && nowMin>=s.s && nowMin<s.e;
+          return `<span class="freeSlotChip${isNow?" fsNow":""}">${fmtHM(s.s)}–${fmtHM(s.e)}</span>`;
+        }).join("") + `</div>`;
+      }
+    }
+    return `
+      <div class="freeSlotCard" style="border-left-color:${disabled?"var(--border)":roomColor(r.id)}">
+        <div class="fsHead">
+          <span class="fsDot" style="background:${disabled?"var(--border)":roomColor(r.id)}"></span>
+          <span class="fsName">${esc(r.id)} — ${esc(r.name)}</span>
+        </div>
+        ${body}
+      </div>`;
+  }).join("");
+}
+
+/* ===================== BOOKING LIST (page 1) ===================== */
+function bookingsOnDate(dateStr){
+  return bookings.filter(b=>{
+    if(b.status!=="active") return false;
+    const {ds,de} = rangesForBooking(b);
+    return dateStr >= ds && dateStr <= de;
+  });
+}
+function renderBookingList(){
+  const date = document.getElementById("listDateFilter").value || todayStr();
+  const tbody = document.querySelector("#bookingListTable tbody");
+  const rows = bookingsOnDate(date);
+  if(rows.length===0){ tbody.innerHTML = `<tr><td colspan="5" class="empty">ยังไม่มีการจองในวันที่เลือก</td></tr>`; return; }
+  tbody.innerHTML = rows.map(b=>`
+    <tr>
+      <td>${esc(b.name)}<div class="small">${esc(b.department)}</div></td>
+      <td>${esc(b.room)}</td>
+      <td>${esc(fmtTimeRange(b))}</td>
+      <td>${esc(b.purpose)}</td>
+      <td>
+        <div style="display:flex;gap:6px;">
+          <button class="btn btn-secondary btn-sm" onclick="openEditModal('${b.id}')">แก้ไข</button>
+          <button class="btn btn-danger btn-sm" onclick="openCancelModal('${b.id}')">ยกเลิก</button>
+        </div>
+      </td>
+    </tr>`).join("");
+}
+function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+/* ===================== CALENDAR (page 2) ===================== */
+function buildGridDates(year, month){
+  const first = new Date(year, month, 1);
+  const startOffset = first.getDay();
+  const gridStart = new Date(year, month, 1 - startOffset);
+  const cells = [];
+  for(let i=0;i<42;i++){
+    const d = new Date(gridStart); d.setDate(gridStart.getDate()+i);
+    cells.push(d);
+  }
+  return cells;
+}
+function dstr(d){ return d.getFullYear()+"-"+pad2(d.getMonth()+1)+"-"+pad2(d.getDate()); }
+
+function roomStatusOnDate(roomId, dateStr){
+  return bookings.some(b=> b.status==="active" && b.room===roomId && dateStr >= rangesForBooking(b).ds && dateStr <= rangesForBooking(b).de) ? "busy" : "avail";
+}
+
+function renderCalendar(){
+  document.getElementById("calMonthLabel").textContent = MONTH_TH[calMonth.getMonth()]+" "+(calMonth.getFullYear()+543);
+  const cells = buildGridDates(calMonth.getFullYear(), calMonth.getMonth());
+  const grid = document.getElementById("calGrid");
+  const today = todayStr();
+
+  // summary bar
+  const summary = document.getElementById("calSummary");
+  if(calRoom==="all"){
+    const busyToday = ROOMS.filter(r=>roomStatusOnDate(r.id, today)==="busy").length;
+    summary.innerHTML = `
+      <span class="summarychip"><span class="dot green"></span>ว่างวันนี้ ${ROOMS.length-busyToday} ห้อง</span>
+      <span class="summarychip"><span class="dot red"></span>ไม่ว่างวันนี้ ${busyToday} ห้อง</span>`;
+  } else {
+    const st = roomStatusOnDate(calRoom, today);
+    summary.innerHTML = `<span class="summarychip"><span class="dot ${st==='avail'?'green':'red'}"></span>วันนี้: ${st==='avail'?'ว่าง':'ไม่ว่าง'} (${roomName(calRoom)})</span>`;
+  }
+
+  const legendEl = document.getElementById("calLegend");
+  if(calRoom === "all"){
+    legendEl.style.display = "flex";
+    legendEl.innerHTML = ROOMS.map(r=>`<span class="legenditem"><span class="dot" style="background:${roomColor(r.id)}"></span>${r.id}</span>`).join("");
+  } else {
+    legendEl.style.display = "none";
+  }
+
+  let html = DOW_TH.map(d=>`<div class="dow">${d}</div>`).join("");
+  cells.forEach(d=>{
+    const ds = dstr(d);
+    const otherMonth = d.getMonth() !== calMonth.getMonth();
+    const isToday = ds === today;
+    const holiday = isHoliday(ds);
+    const holidayCls = holiday ? "holiday" : "";
+    const holidayMark = holiday ? `<div class="holidaymark" title="${esc(holiday.label)}">🔴 ${esc(holiday.label)}</div>` : "";
+    if(calRoom === "all"){
+      const busyRooms = ROOMS.filter(r=>roomStatusOnDate(r.id,ds)==='busy');
+      const dots = busyRooms.map(r=>`<span class="dot" style="background:${roomColor(r.id)}" title="${r.id}"></span>`).join("");
+      html += `<div class="daycell ${otherMonth?'othermonth':''} ${isToday?'today':''} ${holidayCls}" onclick="openDayModal('${ds}')">
+        <div class="num">${d.getDate()}</div>
+        <div class="dotsrow">${dots}</div>
+        ${holidayMark}
+      </div>`;
+    } else {
+      const st = roomStatusOnDate(calRoom, ds);
+      html += `<div class="daycell roomview ${st==='busy'?'busy':'avail'} ${otherMonth?'othermonth':''} ${isToday?'today':''} ${holidayCls}" onclick="openDayModal('${ds}')">
+        <div class="num">${d.getDate()}</div>
+        ${holidayMark}
+      </div>`;
+    }
+  });
+  grid.innerHTML = html;
+}
+
+function openDayModal(ds){
+  const rows = bookingsOnDate(ds).filter(b=> calRoom==="all" || b.room===calRoom);
+  const holiday = isHoliday(ds);
+  const holidayNote = holiday ? `<div class="msg show err" style="display:block;">🔴 วันหยุด: ${esc(holiday.label)} — ไม่สามารถจองห้องในวันนี้ได้</div>` : "";
+  const body = `
+    <div class="mhead">
+      <h3>การจองวันที่ ${fmtDateTH(ds)}</h3>
+      <button class="closebtn" onclick="closeModal()">✕</button>
+    </div>
+    ${holidayNote}
+    ${rows.length===0 ? `<div class="empty">ไม่มีการจองในวันนี้</div>` :
+      rows.map(b=>`
+        <div class="bookingitem">
+          <div class="brow"><span class="bname">${esc(b.name)}</span><span class="badge red">${esc(b.room)}</span></div>
+          <div class="bmeta">${esc(b.department)} · ${esc(fmtTimeRange(b))}</div>
+          <div class="bmeta">${esc(b.purpose)}</div>
+          <div class="actions">
+            <button class="btn btn-secondary btn-sm" onclick="openEditModal('${b.id}')">แก้ไข</button>
+            <button class="btn btn-danger btn-sm" onclick="openCancelModal('${b.id}')">ยกเลิก</button>
+          </div>
+        </div>`).join("")
+    }`;
+  showModal(body);
+}
+
+/* ===================== EDIT MODAL ===================== */
+function openEditModal(id){
+  const b = bookings.find(x=>x.id===id);
+  if(!b) return;
+  const body = `
+    <div class="mhead"><h3>แก้ไขการจอง</h3><button class="closebtn" onclick="closeModal()">✕</button></div>
+    <div id="editMsg" class="msg"></div>
+    <div class="card" style="box-shadow:none;border:1px solid var(--border);padding:14px;margin-bottom:14px;">
+      <h3 style="font-size:13px;">ข้อมูลผู้แก้ไข</h3>
+      <div class="field"><label>ชื่อผู้แก้ไข</label><input type="text" id="e_editorName" placeholder="ชื่อ-นามสกุล"></div>
+      <div class="field"><label>แผนก</label><select id="e_editorDept"></select></div>
+      <div class="field"><label>หมายเหตุการแก้ไข</label><textarea id="e_editNote" placeholder="ระบุเหตุผลการแก้ไข"></textarea></div>
+      <label>วันที่และเวลาที่แก้ไข</label>
+      <div class="autofield">${nowLabel()} (บันทึกอัตโนมัติ)</div>
+    </div>
+    <div class="card" style="box-shadow:none;border:1px solid var(--border);padding:14px;">
+      <h3 style="font-size:13px;">ข้อมูลใหม่</h3>
+      <div class="field"><label>ชื่อผู้จอง</label><input type="text" id="e_name" value="${esc(b.name)}"></div>
+      <div class="field"><label>แผนก</label><select id="e_dept"></select></div>
+      <div class="field"><label>ห้อง</label><select id="e_room"></select></div>
+      ${b.multiDay ? `
+        <div class="row2">
+          <div class="field"><label>วันที่เริ่มต้น</label><input type="date" id="e_dateStart" value="${b.dateStart}"></div>
+          <div class="field"><label>วันที่สิ้นสุด</label><input type="date" id="e_dateEnd" value="${b.dateEnd}"></div>
+        </div>` : `
+        <div class="field"><label>วันที่</label><input type="date" id="e_date" value="${b.date}"></div>`}
+      <div class="row2">
+        <div class="field"><label>เวลาเริ่มต้น</label><input type="time" id="e_timeStart" value="${b.timeStart}"></div>
+        <div class="field"><label>เวลาสิ้นสุด</label><input type="time" id="e_timeEnd" value="${b.timeEnd}"></div>
+      </div>
+    </div>
+    <button class="btn btn-primary" style="margin-top:14px;" onclick="submitEdit('${b.id}', this)">บันทึกการแก้ไข</button>
+  `;
+  showModal(body);
+  fillSelect(document.getElementById("e_editorDept"), DEPARTMENTS, "เลือกแผนก");
+  fillSelect(document.getElementById("e_dept"), DEPARTMENTS, null);
+  document.getElementById("e_dept").value = DEPARTMENTS.includes(b.department) ? b.department : "อื่นๆระบุ";
+  const selectableRooms = ROOMS.filter(r=>isRoomActive(r) || r.id===b.room);
+  fillSelect(document.getElementById("e_room"), selectableRooms, null);
+  document.getElementById("e_room").value = b.room;
+  if(b.multiDay) applyDateTimeMin("e_dateStart","e_timeStart","editMsg");
+  else applyDateTimeMin("e_date","e_timeStart","editMsg");
+}
+
+async function submitEdit(id, btn){
+  let b = bookings.find(x=>x.id===id);
+  if(!b) return;
+  const editorName = document.getElementById("e_editorName").value.trim();
+  const editorDept = document.getElementById("e_editorDept").value;
+  const editNote = document.getElementById("e_editNote").value.trim();
+  if(!editorName || !editorDept){ showMsg("editMsg","กรุณากรอกชื่อผู้แก้ไขและแผนก"); return; }
+
+  const newData = {
+    name: document.getElementById("e_name").value.trim(),
+    department: document.getElementById("e_dept").value,
+    room: document.getElementById("e_room").value,
+    timeStart: document.getElementById("e_timeStart").value,
+    timeEnd: document.getElementById("e_timeEnd").value,
+  };
+  if(b.multiDay){
+    newData.dateStart = document.getElementById("e_dateStart").value;
+    newData.dateEnd = document.getElementById("e_dateEnd").value;
+    newData.multiDay = true;
+  } else {
+    newData.date = document.getElementById("e_date").value;
+    newData.multiDay = false;
+  }
+  if(!newData.name || !newData.timeStart || !newData.timeEnd){ showMsg("editMsg","กรุณากรอกข้อมูลให้ครบถ้วน"); return; }
+  if(newData.timeStart >= newData.timeEnd){ showMsg("editMsg","เวลาสิ้นสุดต้องมากกว่าเวลาเริ่มต้น"); return; }
+
+  const newStartDate = newData.multiDay ? newData.dateStart : newData.date;
+  if(isPastDateTime(newStartDate, newData.timeStart)){
+    showMsg("editMsg","ไม่สามารถแก้ไขไปเป็นวันหรือเวลาที่ผ่านมาแล้วได้ กรุณาเลือกวันเวลาปัจจุบันหรืออนาคต");
+    return;
+  }
+  {
+    const {ds: hDs, de: hDe} = rangesForBooking(newData);
+    for(let d=hDs; d<=hDe; ){
+      const h = isHoliday(d);
+      if(h){ showMsg("editMsg", `ไม่สามารถแก้ไขได้ วันที่ ${fmtDateTH(d)} เป็นวันหยุด (${esc(h.label)})`); return; }
+      const dt = new Date(d); dt.setDate(dt.getDate()+1);
+      d = dt.getFullYear()+"-"+pad2(dt.getMonth()+1)+"-"+pad2(dt.getDate());
+    }
+  }
+
+  b = bookings.find(x=>x.id===id);
+  if(!b){ showMsg("editMsg","การจองนี้ถูกยกเลิกหรือแก้ไขไปแล้วโดยผู้อื่น กรุณาปิดหน้าต่างแล้วลองใหม่"); return; }
+
+  const conflict = findConflict(newData, b.id);
+  if(conflict){
+    showMsg("editMsg", `ห้อง ${conflict.room} ถูกจองแล้วโดย "${conflict.name}" ช่วง ${fmtDateRange(conflict)} เวลา ${fmtTimeRange(conflict)}`);
+    return;
+  }
+
+  const oldSnapshot = { name:b.name, department:b.department, room:b.room, dateLabel: fmtDateRange(b), timeLabel: fmtTimeRange(b) };
+  const merged = { ...b, ...newData };
+  const newSnapshot = { name:merged.name, department:merged.department, room:merged.room, dateLabel: fmtDateRange(merged), timeLabel: fmtTimeRange(merged) };
+
+  setBtnLoading(btn, true, "กำลังบันทึก...");
+  try{
+    await updateBookingAndLog(b.id, newData, {
+      bookingId: b.id, room: newSnapshot.room,
+      oldData: JSON.stringify(oldSnapshot), newData: JSON.stringify(newSnapshot),
+      editorName, editorDept, editNote, timestamp: new Date().toISOString()
+    });
+  }catch(err){
+    if(err.message === "conflict"){ showMsg("editMsg","ห้องนี้เพิ่งถูกจองไปโดยคนอื่นในช่วงเวลาเดียวกัน กรุณาลองใหม่"); }
+    else { showMsg("editMsg","บันทึกไม่สำเร็จ: "+err.message); }
+    return;
+  }finally{
+    setBtnLoading(btn, false);
+  }
+  closeModal();
+  showToast("บันทึกการแก้ไขสำเร็จ");
+}
+
+/* ===================== CANCEL MODAL ===================== */
+function openCancelModal(id){
+  const b = bookings.find(x=>x.id===id);
+  if(!b) return;
+  const body = `
+    <div class="mhead"><h3>ยกเลิกการจอง</h3><button class="closebtn" onclick="closeModal()">✕</button></div>
+    <div id="cancelMsg" class="msg"></div>
+    <div class="bookingitem">
+      <div class="brow"><span class="bname">${esc(b.name)}</span><span class="badge red">${esc(b.room)}</span></div>
+      <div class="bmeta">${esc(b.department)} · ${esc(fmtDateRange(b))} · ${esc(fmtTimeRange(b))}</div>
+      <div class="bmeta">${esc(b.purpose)}</div>
+    </div>
+    <div class="field"><label>ชื่อผู้ยกเลิก</label><input type="text" id="c_name" placeholder="ชื่อ-นามสกุล"></div>
+    <div class="field"><label>แผนก</label><select id="c_dept"></select></div>
+    <div class="field"><label>หมายเหตุการยกเลิก</label><textarea id="c_note" placeholder="ระบุเหตุผลการยกเลิก"></textarea></div>
+    <label>วันที่และเวลาที่ยกเลิก</label>
+    <div class="autofield">${nowLabel()} (บันทึกอัตโนมัติ)</div>
+    <button class="btn btn-danger" style="width:100%;margin-top:14px;" onclick="submitCancel('${b.id}', this)">ยืนยันการยกเลิก</button>
+  `;
+  showModal(body);
+  fillSelect(document.getElementById("c_dept"), DEPARTMENTS, "เลือกแผนก");
+}
+
+async function submitCancel(id, btn){
+  let b = bookings.find(x=>x.id===id);
+  if(!b) return;
+  const cancelerName = document.getElementById("c_name").value.trim();
+  const cancelerDept = document.getElementById("c_dept").value;
+  const cancelNote = document.getElementById("c_note").value.trim();
+  if(!cancelerName || !cancelerDept){ showMsg("cancelMsg","กรุณากรอกชื่อผู้ยกเลิกและแผนก"); return; }
+
+  b = bookings.find(x=>x.id===b.id);
+  if(!b){ showMsg("cancelMsg","การจองนี้ถูกยกเลิกไปแล้วโดยผู้อื่น"); return; }
+
+  setBtnLoading(btn, true, "กำลังบันทึก...");
+  try{
+    await cancelBookingAndLog(b.id, {
+      bookingId: b.id, originalName: b.name, room: b.room,
+      dateLabel: fmtDateRange(b), timeLabel: fmtTimeRange(b),
+      cancelerName, cancelerDept, cancelNote, timestamp: new Date().toISOString()
+    });
+  }catch(err){ showMsg("cancelMsg","บันทึกไม่สำเร็จ: "+err.message); return; }finally{ setBtnLoading(btn, false); }
+  closeModal();
+  showToast("ยกเลิกการจองสำเร็จ");
+}
+
+/* ===================== HISTORY TABLES ===================== */
+function renderCancelHist(){
+  const tbody = document.querySelector("#cancelHistTable tbody");
+  const rows = [...cancelLogs].sort((a,b)=> new Date(b.timestamp)-new Date(a.timestamp));
+  if(rows.length===0){ tbody.innerHTML = `<tr><td colspan="7" class="empty">ยังไม่มีประวัติการยกเลิก</td></tr>`; return; }
+  tbody.innerHTML = rows.map(l=>`
+    <tr>
+      <td>${esc(l.originalName)}</td>
+      <td>${esc(l.room)}</td>
+      <td>${esc(l.dateLabel)}<div class="small">${esc(l.timeLabel)}</div></td>
+      <td>${esc(l.cancelerName)}</td>
+      <td>${esc(l.cancelerDept)}</td>
+      <td>${esc(l.cancelNote||"—")}</td>
+      <td>${esc(new Date(l.timestamp).toLocaleString("th-TH"))}</td>
+    </tr>`).join("");
+}
+function renderEditHist(){
+  const tbody = document.querySelector("#editHistTable tbody");
+  const rows = [...editLogs].sort((a,b)=> new Date(b.timestamp)-new Date(a.timestamp));
+  if(rows.length===0){ tbody.innerHTML = `<tr><td colspan="7" class="empty">ยังไม่มีประวัติการแก้ไข</td></tr>`; return; }
+  tbody.innerHTML = rows.map(l=>`
+    <tr>
+      <td>${esc(l.room)}</td>
+      <td><b>${esc(l.oldData.name)}</b><div class="small">${esc(l.oldData.department)} · ${esc(l.oldData.dateLabel)} · ${esc(l.oldData.timeLabel)}</div></td>
+      <td><b>${esc(l.newData.name)}</b><div class="small">${esc(l.newData.department)} · ${esc(l.newData.dateLabel)} · ${esc(l.newData.timeLabel)}</div></td>
+      <td>${esc(l.editorName)}</td>
+      <td>${esc(l.editorDept)}</td>
+      <td>${esc(l.editNote||"—")}</td>
+      <td>${esc(new Date(l.timestamp).toLocaleString("th-TH"))}</td>
+    </tr>`).join("");
+}
+
+/* ===================== ADMIN PANEL (rooms management) ===================== */
+function openAdminGate(){
+  const body = `
+    <div class="mhead"><h3>เข้าสู่หน้าแอดมิน</h3><button class="closebtn" onclick="closeModal()">✕</button></div>
+    <div id="adminGateMsg" class="msg"></div>
+    <div class="field"><label>รหัสผ่านแอดมิน</label><input type="password" id="admin_pin" placeholder="กรอกรหัสผ่าน" autocomplete="off"></div>
+    <button class="btn btn-primary" onclick="submitAdminGate()">เข้าสู่ระบบ</button>
+  `;
+  showModal(body);
+  const pinInput = document.getElementById("admin_pin");
+  pinInput.focus();
+  pinInput.addEventListener("keydown", e=>{ if(e.key==="Enter") submitAdminGate(); });
+}
+function submitAdminGate(){
+  const pin = document.getElementById("admin_pin").value;
+  if(pin !== ADMIN_PASSCODE){ showMsg("adminGateMsg","รหัสผ่านไม่ถูกต้อง"); return; }
+  openAdminPanel();
+}
+
+const ADMIN_TABS = [
+  {id:"rooms", label:"🏠 ห้องประชุม"},
+  {id:"depts", label:"🏢 แผนก"},
+  {id:"holidays", label:"📅 วันหยุด"},
+  {id:"stats", label:"📊 สถิติ"},
+  {id:"export", label:"⬇️ ส่งออกข้อมูล"},
+];
+function adminTabsHtml(activeTab){
+  return `<div class="adminTabs">${ADMIN_TABS.map(t=>
+    `<button class="adminTabBtn${t.id===activeTab?' active':''}" onclick="openAdminPanel('${t.id}')">${t.label}</button>`
+  ).join("")}</div>`;
+}
+
+function openAdminPanel(tab){
+  tab = tab || "rooms";
+  let content;
+  if(tab==="rooms") content = adminRoomsTabHtml();
+  else if(tab==="depts") content = adminDeptsTabHtml();
+  else if(tab==="holidays") content = adminHolidaysTabHtml();
+  else if(tab==="stats") content = adminStatsTabHtml();
+  else if(tab==="export") content = adminExportTabHtml();
+  const body = `
+    <div class="mhead"><h3>แผงควบคุมแอดมิน</h3><button class="closebtn" onclick="closeModal()">✕</button></div>
+    ${adminTabsHtml(tab)}
+    <div id="adminMsg" class="msg"></div>
+    ${content}
+  `;
+  showModal(body, true);
+}
+
+function roomClosureNote(r){
+  if(isRoomActive(r)) return "";
+  const parts = [];
+  if(r.closedReason) parts.push(esc(r.closedReason));
+  if(r.closedUntil) parts.push("ถึงวันที่ "+esc(fmtDateTH(r.closedUntil)));
+  if(parts.length===0) return "";
+  return `<div class="bmeta" style="color:var(--red);font-weight:600;">🔧 ${parts.join(" · ")}</div>`;
+}
+
+function adminRoomsTabHtml(){
+  const roomsListHtml = ROOMS.length===0 ? `<div class="empty">ยังไม่มีห้องประชุม</div>` : ROOMS.map(r=>{
+    const active = isRoomActive(r);
+    return `
+    <div class="bookingitem">
+      <div class="brow">
+        <span class="bname"><span class="rsDot" style="background:${roomColor(r.id)};display:inline-block;margin-right:6px;"></span>${esc(r.id)} — ${esc(r.name)}</span>
+        <span class="badge ${active?'green':'red'}">${active?'ใช้งานอยู่':'ปิดใช้งาน'}</span>
+      </div>
+      <div class="bmeta">${esc(r.floor)}</div>
+      ${roomClosureNote(r)}
+      <div class="actions">
+        <button class="btn btn-secondary btn-sm" onclick="openEditRoomForm('${esc(r.id)}')">✏️ แก้ไข</button>
+        <button class="btn btn-secondary btn-sm" onclick="${active?`openCloseRoomForm('${esc(r.id)}')`:`adminSetRoomClosed('${esc(r.id)}', true, '', '', this)`}">🔄 ${active?'ปิดใช้งาน':'เปิดใช้งาน'}</button>
+        <button class="btn btn-danger btn-sm" onclick="adminDeleteRoom('${esc(r.id)}', this)">🗑️ ลบ</button>
+      </div>
+    </div>`;
+  }).join("");
+  return `
+    <div class="adminGrid" style="margin-bottom:16px;">${roomsListHtml}</div>
+    <div class="card" style="box-shadow:none;border:1px solid var(--border);padding:14px;">
+      <h3 style="font-size:13px;">➕ เพิ่มห้องประชุมใหม่</h3>
+      <div class="field"><label>รหัสห้อง (เช่น M206)</label><input type="text" id="admin_room_id" placeholder="M206"></div>
+      <div class="field"><label>ชื่อห้อง</label><input type="text" id="admin_room_name" placeholder="เช่น ห้องประชุมใหญ่"></div>
+      <div class="field"><label>ชั้น</label><input type="text" id="admin_room_floor" placeholder="เช่น ชั้น 3"></div>
+      <button class="btn btn-primary" onclick="adminAddRoom(this)">เพิ่มห้อง</button>
+    </div>
+  `;
+}
+
+function openCloseRoomForm(id){
+  const r = ROOMS.find(x=>x.id===id);
+  if(!r) return;
+  const body = `
+    <div class="mhead"><h3>ปิดใช้งานห้อง ${esc(id)}</h3><button class="closebtn" onclick="closeModal()">✕</button></div>
+    <div id="adminMsg" class="msg"></div>
+    <div class="field"><label>เหตุผล (ไม่บังคับ)</label><input type="text" id="admin_close_reason" placeholder="เช่น ห้องซ่อมแอร์"></div>
+    <div class="field"><label>ปิดถึงวันที่ (ไม่บังคับ)</label><input type="date" id="admin_close_until"></div>
+    <button class="btn btn-primary" onclick="adminSetRoomClosed('${esc(id)}', false, document.getElementById('admin_close_reason').value.trim(), document.getElementById('admin_close_until').value, this)">ยืนยันปิดใช้งาน</button>
+  `;
+  showModal(body);
+}
+
+async function adminSetRoomClosed(id, turningOn, reason, until, btn){
+  const patch = turningOn
+    ? { active:true, closedReason:"", closedUntil:"" }
+    : { active:false, closedReason: reason||"", closedUntil: until||"" };
+  setBtnLoading(btn, true, "กำลังบันทึก...");
+  try{
+    await apiCall("editRoom", { id, patch });
+    const r = ROOMS.find(x=>x.id===id);
+    if(r) Object.assign(r, patch);
+    refreshAll(); // sync fully in background
+    showToast(turningOn ? "เปิดใช้งานห้องแล้ว" : "ปิดใช้งานห้องแล้ว");
+    openAdminPanel("rooms");
+  }catch(err){ showMsg("adminMsg","เปลี่ยนสถานะไม่สำเร็จ: "+err.message); setBtnLoading(btn, false); }
+}
+
+function openEditRoomForm(id){
+  const r = ROOMS.find(x=>x.id===id);
+  if(!r) return;
+  const body = `
+    <div class="mhead"><h3>แก้ไขห้องประชุม</h3><button class="closebtn" onclick="closeModal()">✕</button></div>
+    <div id="adminMsg" class="msg"></div>
+    <div class="field"><label>รหัสห้อง</label><input type="text" value="${esc(r.id)}" disabled style="opacity:.6;"></div>
+    <div class="field"><label>ชื่อห้อง</label><input type="text" id="admin_edit_name" value="${esc(r.name)}"></div>
+    <div class="field"><label>ชั้น</label><input type="text" id="admin_edit_floor" value="${esc(r.floor)}"></div>
+    <button class="btn btn-primary" onclick="adminEditRoom('${esc(r.id)}', this)">บันทึกการแก้ไข</button>
+  `;
+  showModal(body);
+}
+
+async function adminAddRoom(btn){
+  const id = document.getElementById("admin_room_id").value.trim();
+  const name = document.getElementById("admin_room_name").value.trim();
+  const floor = document.getElementById("admin_room_floor").value.trim();
+  if(!id || !name || !floor){ showMsg("adminMsg","กรุณากรอกข้อมูลให้ครบถ้วน"); return; }
+  if(ROOMS.some(r=>r.id.toLowerCase()===id.toLowerCase())){ showMsg("adminMsg","มีรหัสห้องนี้อยู่แล้ว กรุณาใช้รหัสอื่น"); return; }
+  setBtnLoading(btn, true, "กำลังบันทึก...");
+  try{
+    await apiCall("addRoom", { id, name, floor, active:true });
+    ROOMS.push({ id, name, floor, active:true, closedReason:"", closedUntil:"" });
+    refreshAll();
+    showToast("เพิ่มห้องประชุมสำเร็จ");
+    openAdminPanel("rooms");
+  }catch(err){ showMsg("adminMsg","เพิ่มห้องไม่สำเร็จ: "+err.message); setBtnLoading(btn, false); }
+}
+
+async function adminEditRoom(id, btn){
+  const name = document.getElementById("admin_edit_name").value.trim();
+  const floor = document.getElementById("admin_edit_floor").value.trim();
+  if(!name || !floor){ showMsg("adminMsg","กรุณากรอกข้อมูลให้ครบถ้วน"); return; }
+  setBtnLoading(btn, true, "กำลังบันทึก...");
+  try{
+    await apiCall("editRoom", { id, patch: { name, floor } });
+    const r = ROOMS.find(x=>x.id===id);
+    if(r){ r.name = name; r.floor = floor; }
+    refreshAll();
+    showToast("บันทึกข้อมูลห้องสำเร็จ");
+    openAdminPanel("rooms");
+  }catch(err){ showMsg("adminMsg","แก้ไขห้องไม่สำเร็จ: "+err.message); setBtnLoading(btn, false); }
+}
+
+async function adminDeleteRoom(id, btn){
+  if(!confirm(`ยืนยันลบห้อง ${id} ใช่หรือไม่? การจองที่มีอยู่ของห้องนี้จะยังคงอยู่ในประวัติ`)) return;
+  setBtnLoading(btn, true, "กำลังลบ...");
+  try{
+    await apiCall("deleteRoom", { id });
+    ROOMS = ROOMS.filter(r=>r.id!==id);
+    refreshAll();
+    showToast("ลบห้องประชุมสำเร็จ");
+    openAdminPanel("rooms");
+  }catch(err){ showMsg("adminMsg","ลบห้องไม่สำเร็จ: "+err.message); setBtnLoading(btn, false); }
+}
+
+/* ===== แท็บ: จัดการแผนก ===== */
+function adminDeptsTabHtml(){
+  const list = DEPARTMENTS.filter(d=>d!=="อื่นๆระบุ").map(d=>`
+    <div class="bookingitem" style="padding:9px 12px;">
+      <div class="brow">
+        <span class="bname" style="font-size:13.5px;">${esc(d)}</span>
+        <button class="btn btn-danger btn-sm" onclick="adminDeleteDept('${esc(d).replace(/'/g,"\\'")}', this)">🗑️ ลบ</button>
+      </div>
+    </div>`).join("");
+  return `
+    <div class="adminGrid" style="margin-bottom:16px;">${list || '<div class="empty">ยังไม่มีแผนก</div>'}</div>
+    <div class="card" style="box-shadow:none;border:1px solid var(--border);padding:14px;">
+      <h3 style="font-size:13px;">➕ เพิ่มแผนกใหม่</h3>
+      <div class="field"><label>ชื่อแผนก</label><input type="text" id="admin_dept_name" placeholder="เช่น Marketing"></div>
+      <button class="btn btn-primary" onclick="adminAddDept(this)">เพิ่มแผนก</button>
+    </div>
+  `;
+}
+async function adminAddDept(btn){
+  const name = document.getElementById("admin_dept_name").value.trim();
+  if(!name){ showMsg("adminMsg","กรุณากรอกชื่อแผนก"); return; }
+  if(DEPARTMENTS.includes(name)){ showMsg("adminMsg","มีแผนกนี้อยู่แล้ว"); return; }
+  setBtnLoading(btn, true, "กำลังบันทึก...");
+  try{
+    await apiCall("addDepartment", { name });
+    DEPARTMENTS.splice(DEPARTMENTS.length-1, 0, name); // แทรกก่อน "อื่นๆระบุ" ซึ่งอยู่ท้ายสุดเสมอ
+    refreshDepartmentSelects();
+    refreshAll();
+    showToast("เพิ่มแผนกสำเร็จ");
+    openAdminPanel("depts");
+  }catch(err){ showMsg("adminMsg","เพิ่มแผนกไม่สำเร็จ: "+err.message); setBtnLoading(btn, false); }
+}
+async function adminDeleteDept(name, btn){
+  if(!confirm(`ยืนยันลบแผนก "${name}" ใช่หรือไม่? การจองเดิมที่ใช้แผนกนี้จะยังแสดงชื่อแผนกเดิมในประวัติ`)) return;
+  setBtnLoading(btn, true, "กำลังลบ...");
+  try{
+    await apiCall("deleteDepartment", { name });
+    DEPARTMENTS = DEPARTMENTS.filter(d=>d!==name);
+    refreshDepartmentSelects();
+    refreshAll();
+    showToast("ลบแผนกสำเร็จ");
+    openAdminPanel("depts");
+  }catch(err){ showMsg("adminMsg","ลบแผนกไม่สำเร็จ: "+err.message); setBtnLoading(btn, false); }
+}
+
+/* ===== แท็บ: วันหยุด/วันปิดทำการ ===== */
+function adminHolidaysTabHtml(){
+  const sorted = [...HOLIDAYS].sort((a,b)=>a.date.localeCompare(b.date));
+  const list = sorted.map(h=>`
+    <div class="bookingitem" style="padding:9px 12px;">
+      <div class="brow">
+        <span class="bname" style="font-size:13.5px;">${esc(fmtDateTH(h.date))} — ${esc(h.label)}</span>
+        <button class="btn btn-danger btn-sm" onclick="adminDeleteHoliday('${esc(h.date)}', this)">🗑️ ลบ</button>
+      </div>
+    </div>`).join("");
+  return `
+    <div class="adminGrid" style="margin-bottom:16px;">${list || '<div class="empty">ยังไม่มีวันหยุดที่ตั้งไว้</div>'}</div>
+    <div class="card" style="box-shadow:none;border:1px solid var(--border);padding:14px;">
+      <h3 style="font-size:13px;">➕ เพิ่มวันหยุด</h3>
+      <div class="field"><label>วันที่</label><input type="date" id="admin_holiday_date"></div>
+      <div class="field"><label>ชื่อวันหยุด</label><input type="text" id="admin_holiday_label" placeholder="เช่น วันหยุดปีใหม่"></div>
+      <button class="btn btn-primary" onclick="adminAddHoliday(this)">เพิ่มวันหยุด</button>
+    </div>
+    <p style="font-size:12px;color:var(--muted);margin-top:10px;">ระบบจะไม่อนุญาตให้จองห้องในวันที่ตั้งไว้เป็นวันหยุด</p>
+  `;
+}
+function refreshCalendarIfVisible(){
+  const el = document.getElementById("page-calendar");
+  if(el && el.classList.contains("active")) renderCalendar();
+}
+async function adminAddHoliday(btn){
+  const date = document.getElementById("admin_holiday_date").value;
+  const label = document.getElementById("admin_holiday_label").value.trim();
+  if(!date || !label){ showMsg("adminMsg","กรุณากรอกวันที่และชื่อวันหยุดให้ครบ"); return; }
+  if(HOLIDAYS.some(h=>h.date===date)){ showMsg("adminMsg","มีวันหยุดในวันนี้อยู่แล้ว"); return; }
+  setBtnLoading(btn, true, "กำลังบันทึก...");
+  try{
+    await apiCall("addHoliday", { id: uid(), date, label });
+    HOLIDAYS.push({ date, label });
+    refreshCalendarIfVisible();
+    refreshAll();
+    showToast("เพิ่มวันหยุดสำเร็จ");
+    openAdminPanel("holidays");
+  }catch(err){ showMsg("adminMsg","เพิ่มวันหยุดไม่สำเร็จ: "+err.message); setBtnLoading(btn, false); }
+}
+async function adminDeleteHoliday(date, btn){
+  setBtnLoading(btn, true, "กำลังลบ...");
+  try{
+    await apiCall("deleteHoliday", { date });
+    HOLIDAYS = HOLIDAYS.filter(h=>h.date!==date);
+    refreshCalendarIfVisible();
+    refreshAll();
+    showToast("ลบวันหยุดสำเร็จ");
+    openAdminPanel("holidays");
+  }catch(err){ showMsg("adminMsg","ลบวันหยุดไม่สำเร็จ: "+err.message); setBtnLoading(btn, false); }
+}
+
+/* ===== แท็บ: สถิติการใช้งาน ===== */
+function adminStatsTabHtml(){
+  const active = bookings.filter(b=>b.status==="active");
+  const byRoom = {};
+  ROOMS.forEach(r=>byRoom[r.id]=0);
+  active.forEach(b=>{ byRoom[b.room] = (byRoom[b.room]||0)+1; });
+  const maxRoomCount = Math.max(1, ...Object.values(byRoom));
+  const roomBars = ROOMS.map(r=>{
+    const count = byRoom[r.id]||0;
+    const pct = Math.round((count/maxRoomCount)*100);
+    return `
+      <div style="margin-bottom:9px;">
+        <div style="display:flex;justify-content:space-between;font-size:12.5px;font-weight:600;margin-bottom:3px;">
+          <span>${esc(r.id)} — ${esc(r.name)}</span><span>${count} ครั้ง</span>
+        </div>
+        <div style="background:var(--bg);border-radius:6px;height:8px;overflow:hidden;">
+          <div style="background:${roomColor(r.id)};height:8px;width:${pct}%;"></div>
+        </div>
+      </div>`;
+  }).join("");
+
+  const byHour = {};
+  active.forEach(b=>{
+    const h = timeToMinutes(b.timeStart);
+    if(h===null) return;
+    const hr = Math.floor(h/60);
+    byHour[hr] = (byHour[hr]||0)+1;
+  });
+  const maxHourCount = Math.max(1, ...Object.values(byHour), 0);
+  const hourBars = Object.keys(byHour).length===0 ? `<div class="empty">ยังไม่มีข้อมูลการจอง</div>` :
+    Array.from({length:11}, (_,i)=>i+8).map(hr=>{ // 08:00-18:00
+      const count = byHour[hr]||0;
+      const pct = Math.round((count/maxHourCount)*100);
+      return `
+        <div style="margin-bottom:7px;">
+          <div style="display:flex;justify-content:space-between;font-size:12px;font-weight:600;margin-bottom:2px;">
+            <span>${pad2(hr)}:00</span><span>${count} ครั้ง</span>
+          </div>
+          <div style="background:var(--bg);border-radius:6px;height:7px;overflow:hidden;">
+            <div style="background:var(--teal, #1E88E5);height:7px;width:${pct}%;"></div>
+          </div>
+        </div>`;
+    }).join("");
+
+  return `
+    <div class="adminStatsRow">
+      <div class="card" style="box-shadow:none;border:1px solid var(--border);padding:14px;margin-bottom:14px;">
+        <h3 style="font-size:13px;">จำนวนการจอง แยกตามห้อง (สะสมทั้งหมด)</h3>
+        ${roomBars}
+      </div>
+      <div class="card" style="box-shadow:none;border:1px solid var(--border);padding:14px;">
+        <h3 style="font-size:13px;">ช่วงเวลาที่มีการจองบ่อย (ตามชั่วโมงเริ่มต้น)</h3>
+        ${hourBars}
+      </div>
+    </div>
+  `;
+}
+
+/* ===== แท็บ: ส่งออกข้อมูล CSV ===== */
+function adminExportTabHtml(){
+  return `
+    <div class="card" style="box-shadow:none;border:1px solid var(--border);padding:14px;">
+      <h3 style="font-size:13px;">⬇️ ส่งออกข้อมูลการจองทั้งหมดเป็น CSV</h3>
+      <p style="font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:12px;">
+        ดาวน์โหลดไฟล์ CSV ของการจองทั้งหมด (รวมที่ยกเลิกแล้ว) เปิดดูหรือส่งต่อผู้บริหารได้ด้วย Excel / Google Sheets
+      </p>
+      <button class="btn btn-primary" onclick="exportBookingsCSV()">ดาวน์โหลด CSV</button>
+    </div>
+  `;
+}
+function csvEscape(v){
+  const s = String(v==null?"":v);
+  return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s;
+}
+function exportBookingsCSV(){
+  const headers = ["วันที่เริ่ม","วันที่สิ้นสุด","เวลาเริ่ม","เวลาสิ้นสุด","ห้อง","ผู้จอง","แผนก","วัตถุประสงค์","สถานะ"];
+  const rows = bookings.map(b=>{
+    const {ds,de} = rangesForBooking(b);
+    return [ds, de, b.timeStart, b.timeEnd, b.room, b.name, b.department, b.purpose, b.status==="active"?"ใช้งานอยู่":"ยกเลิกแล้ว"];
+  });
+  const csv = "\uFEFF" + [headers, ...rows].map(r=>r.map(csvEscape).join(",")).join("\r\n");
+  const blob = new Blob([csv], {type:"text/csv;charset=utf-8;"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = "conimex_bookings_"+todayStr()+".csv";
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast("ดาวน์โหลด CSV สำเร็จ");
+}
+
+/* ===================== MODAL HELPERS ===================== */
+function showModal(html, wide){
+  const modalEl = document.getElementById("modalBody");
+  modalEl.innerHTML = html;
+  modalEl.classList.toggle("modalWide", !!wide);
+  document.getElementById("overlay").classList.add("show");
+  modalOpen = true;
+}
+function closeModal(){
+  document.getElementById("overlay").classList.remove("show");
+  modalOpen = false;
+  // A data refresh may have arrived while the modal was open and skipped
+  // re-rendering (see renderVisiblePages' modalOpen guard) — catch up now.
+  if(dataReady) renderVisiblePages();
+}
+
+/* ===================== SETUP / CONNECTION SCREENS ===================== */
+function showSetupScreen(){
+  document.getElementById("app").innerHTML = `
+    <div style="max-width:560px;margin:40px auto;padding:0 16px;">
+      <div class="card">
+        <h3>ยังไม่ได้เชื่อมต่อฐานข้อมูล</h3>
+        <p style="font-size:14px;line-height:1.7;color:var(--text);">
+          ไฟล์นี้พร้อมใช้งาน แต่ยังไม่ได้ใส่ลิงก์เชื่อมต่อ Google Sheets (ฐานข้อมูลจริงที่ทุกคนใช้ร่วมกัน)
+        </p>
+        <p style="font-size:14px;line-height:1.7;color:var(--text);">
+          กรุณาดูคู่มือ <b>setup-guide.md</b> ที่แนบมาด้วยกัน เพื่อสร้าง Google Sheet + Apps Script Web App ฟรี
+          แล้วนำลิงก์ Web app URL มาวางในไฟล์ HTML นี้ (ค้นหาคำว่า <code>วางลิงก์_WebApp_URL_ตรงนี้</code>)
+        </p>
+      </div>
+    </div>`;
+}
+function showConnectionError(err){
+  clearInterval(pollTimer); // หยุดการรีเฟรชเบื้องหลัง กันไม่ให้ยิง request ซ้ำๆ ใส่หน้าจอ error
+  document.getElementById("app").innerHTML = `
+    <div style="max-width:560px;margin:40px auto;padding:0 16px;">
+      <div class="card">
+        <h3 style="color:var(--red);">เชื่อมต่อฐานข้อมูลไม่สำเร็จ</h3>
+        <p style="font-size:14px;line-height:1.7;">${esc(err.message||String(err))}</p>
+        <p style="font-size:13.5px;line-height:1.7;color:var(--muted);">
+          ตรวจสอบว่า: 1) ลิงก์ APPS_SCRIPT_URL ถูกต้องและลงท้ายด้วย <code>/exec</code>
+          2) Deploy เป็น Web app แบบ "Who has access: Anyone" แล้ว
+          3) ชื่อแท็บใน Google Sheet ตรงกับ Bookings / EditLogs / CancelLogs
+          — ดูรายละเอียดใน setup-guide.md
+        </p>
+        <button class="btn btn-secondary btn-sm" onclick="location.reload()">ลองใหม่</button>
+      </div>
+    </div>`;
+}
+
+/* ===================== BOOTSTRAP ===================== */
+async function main(){
+  initStaticUI();
+  startDashboardClock();
+  if(CONFIG_IS_PLACEHOLDER){ showSetupScreen(); return; }
+  await refreshAll();
+  startPolling();
+}
+function safeStorageGet(key){
+  try{ return localStorage.getItem(key); }catch(e){ return null; }
+}
+function safeStorageSet(key, val){
+  try{ localStorage.setItem(key, val); }catch(e){ /* บางเบราว์เซอร์/บริบทอาจบล็อก localStorage — ไม่เป็นไร แค่จะไม่จดจำรหัสให้ */ }
+}
+function safeStorageRemove(key){
+  try{ localStorage.removeItem(key); }catch(e){}
+}
+function unlockSite(){
+  document.getElementById("siteGate").classList.add("hidden");
+  document.getElementById("app").classList.remove("hidden");
+  main();
+}
+function submitSiteGate(){
+  const pin = document.getElementById("site_pin").value;
+  const msgEl = document.getElementById("siteGateMsg");
+  if(pin !== SITE_PASSCODE){
+    msgEl.textContent = "รหัสผ่านไม่ถูกต้อง กรุณาลองใหม่";
+    msgEl.className = "msg show err";
+    return;
+  }
+  if(document.getElementById("site_remember").checked){
+    safeStorageSet("cx_site_remember", SITE_PASSCODE);
+  } else {
+    safeStorageRemove("cx_site_remember");
+  }
+  unlockSite();
+}
+(function initSiteGate(){
+  const pinInput = document.getElementById("site_pin");
+  pinInput.addEventListener("keydown", e=>{ if(e.key==="Enter") submitSiteGate(); });
+  // ถ้าเคยติ๊ก "จดจำรหัสผ่าน" ไว้บนเครื่องนี้ และรหัสยังตรงกับที่ตั้งไว้ปัจจุบัน ก็เข้าเว็บให้อัตโนมัติ
+  if(safeStorageGet("cx_site_remember") === SITE_PASSCODE){
+    unlockSite();
+  } else {
+    pinInput.focus();
+  }
+})();
+</script>
+</body>
+</html>
