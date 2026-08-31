@@ -547,11 +547,17 @@ let HOLIDAYS = [];
 function isHoliday(dateStr){ return HOLIDAYS.find(h=>h.date===dateStr) || null; }
 const DOW_TH = ["อา","จ","อ","พ","พฤ","ศ","ส"];
 const ROOM_COLORS = ["#1E88E5","#43A047","#FB8C00","#8E24AA","#E53935","#00ACC1","#6D4C41","#3949AB","#00897B","#D81B60"];
-// สีประจำห้องคำนวณจาก id แบบ hash คงที่ ไม่เปลี่ยนแม้จะเพิ่ม/ลบ/สลับลำดับห้องอื่น
+// สีประจำห้อง — อิงตามลำดับห้องในระบบ (ไม่ใช่ hash) เพื่อการันตีว่าแต่ละห้องได้สีไม่ซ้ำกันแน่นอน
+// ตราบใดที่จำนวนห้องทั้งหมดไม่เกินจำนวนสีในชุดสี (10 สี)
 function roomColor(id){
-  let hash = 0;
-  for(let i=0;i<id.length;i++){ hash = (hash*31 + id.charCodeAt(i)) & 0xffffffff; }
-  return ROOM_COLORS[Math.abs(hash) % ROOM_COLORS.length];
+  const idx = ROOMS.findIndex(r=>r.id===id);
+  if(idx === -1){
+    // เผื่อกรณีห้องถูกลบไปแล้วแต่ยังมีการอ้างอิงสีอยู่ (เช่นในประวัติเก่า) — fallback เป็น hash เดิม
+    let hash = 0;
+    for(let i=0;i<id.length;i++){ hash = (hash*31 + id.charCodeAt(i)) & 0xffffffff; }
+    return ROOM_COLORS[Math.abs(hash) % ROOM_COLORS.length];
+  }
+  return ROOM_COLORS[idx % ROOM_COLORS.length];
 }
 function isRoomActive(r){ return r.active !== false && r.active !== "FALSE" && r.active !== "false"; }
 const MONTH_TH = ["มกราคม","กุมภาพันธ์","มีนาคม","เมษายน","พฤษภาคม","มิถุนายน","กรกฎาคม","สิงหาคม","กันยายน","ตุลาคม","พฤศจิกายน","ธันวาคม"];
@@ -581,9 +587,10 @@ function isPastDateTime(dateStr, timeStr){
   if(dateStr === t && timeStr < nowHHMM()) return true;
   return false;
 }
-// Keeps a date+time input pair from allowing past values: sets min=today on the date
-// field, dynamically sets min=now on the time field whenever the date is today, AND
-// actively clamps any past time the user manages to type/scroll in back up to "now".
+// Keeps a date+time input pair hinting at valid values: sets min=today on the date
+// field, and min=now on the time field whenever the date is today (a soft native-browser
+// hint only — it never overwrites what the person is actively selecting). The actual
+// hard block against past bookings happens at submit time via isPastDateTime().
 const DATETIME_SYNC_FNS = [];
 function applyDateTimeMin(dateInputId, timeInputId, msgElId){
   const dateEl = document.getElementById(dateInputId);
@@ -592,19 +599,13 @@ function applyDateTimeMin(dateInputId, timeInputId, msgElId){
   dateEl.min = todayStr();
   const sync = () => {
     if(dateEl.value === todayStr()){
-      const nm = nowHHMM();
-      timeEl.min = nm;
-      if(timeEl.value && timeEl.value < nm){
-        timeEl.value = nm;
-        if(msgElId) showMsg(msgElId, "เวลาที่เลือกผ่านมาแล้ว ระบบปรับเป็นเวลาปัจจุบันให้อัตโนมัติ", false, true);
-      }
+      timeEl.min = nowHHMM();
     } else {
       timeEl.removeAttribute("min");
     }
   };
   sync();
   dateEl.addEventListener("change", sync);
-  timeEl.addEventListener("change", sync);
   DATETIME_SYNC_FNS.push(sync);
 }
 // Re-check every 20s in case a field is left open while the clock ticks forward.
