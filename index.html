@@ -1381,16 +1381,23 @@ function renderEditHist(){
   const tbody = document.querySelector("#editHistTable tbody");
   const rows = [...editLogs].sort((a,b)=> new Date(b.timestamp)-new Date(a.timestamp));
   if(rows.length===0){ tbody.innerHTML = `<tr><td colspan="7" class="empty">ยังไม่มีประวัติการแก้ไข</td></tr>`; return; }
-  tbody.innerHTML = rows.map(l=>`
+  tbody.innerHTML = rows.map(l=>{
+    const oldRoom = (l.oldData && l.oldData.room) || l.room || "-";
+    const newRoom = (l.newData && l.newData.room) || l.room || "-";
+    const roomCell = oldRoom === newRoom
+      ? esc(newRoom)
+      : `<span style="text-decoration:line-through;color:var(--muted);">${esc(oldRoom)}</span> → <b style="color:var(--red);">${esc(newRoom)}</b>`;
+    return `
     <tr>
-      <td>${esc(l.room)}</td>
+      <td>${roomCell}</td>
       <td><b>${esc(l.oldData.name)}</b><div class="small">${esc(l.oldData.department)} · ${esc(l.oldData.dateLabel)} · ${esc(l.oldData.timeLabel)}</div></td>
       <td><b>${esc(l.newData.name)}</b><div class="small">${esc(l.newData.department)} · ${esc(l.newData.dateLabel)} · ${esc(l.newData.timeLabel)}</div></td>
       <td>${esc(l.editorName)}</td>
       <td>${esc(l.editorDept)}</td>
       <td>${esc(l.editNote||"—")}</td>
       <td>${esc(new Date(l.timestamp).toLocaleString("th-TH"))}</td>
-    </tr>`).join("");
+    </tr>`;
+  }).join("");
 }
 
 /* ===================== ADMIN PANEL (rooms management) ===================== */
