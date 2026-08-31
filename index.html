@@ -1386,7 +1386,7 @@ function renderEditHist(){
     const newRoom = (l.newData && l.newData.room) || l.room || "-";
     const roomChanged = oldRoom !== newRoom;
     const oldRoomLabel = roomChanged ? `<b style="color:var(--red);">ห้อง ${esc(oldRoom)}</b>` : `ห้อง ${esc(oldRoom)}`;
-    const newRoomLabel = roomChanged ? `<b style="color:var(--red);">ห้อง ${esc(newRoom)}</b>` : `ห้อง ${esc(newRoom)}`;
+    const newRoomLabel = roomChanged ? `<b style="color:var(--green);">ห้อง ${esc(newRoom)}</b>` : `ห้อง ${esc(newRoom)}`;
     return `
     <tr>
       <td><b>${esc(l.oldData.name)}</b><div class="small">${oldRoomLabel} · ${esc(l.oldData.department)} · ${esc(l.oldData.dateLabel)} · ${esc(l.oldData.timeLabel)}</div></td>
