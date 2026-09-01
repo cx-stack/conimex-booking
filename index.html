@@ -281,6 +281,12 @@ tr:last-child td{border-bottom:none;}
 ::-webkit-scrollbar{width:8px;height:8px;}
 ::-webkit-scrollbar-thumb{background:#d3d7de;border-radius:8px;}
 .hidden{display:none !important;}
+.connBanner{
+  display:none;position:fixed;top:0;left:0;right:0;z-index:600;
+  background:#FFF3CD;color:#7A5B00;text-align:center;padding:7px 12px;
+  font-size:12.5px;font-weight:700;
+}
+.connBanner.show{display:block;}
 
 /* site-wide password gate */
 .siteGate{
@@ -329,6 +335,7 @@ tr:last-child td{border-bottom:none;}
     <button class="btn btn-primary" style="width:100%;" onclick="submitSiteGate()">เข้าใช้งาน</button>
   </div>
 </div>
+<div id="connBanner" class="connBanner"></div>
 <div id="app" class="hidden">
   <div class="topbar">
     <button class="adminGearBtn" id="adminGearBtn" title="Admin" onclick="openAdminGate()">⚙️</button>
@@ -546,7 +553,30 @@ let DEPARTMENTS = [
 let HOLIDAYS = [];
 function isHoliday(dateStr){ return HOLIDAYS.find(h=>h.date===dateStr) || null; }
 const DOW_TH = ["อา","จ","อ","พ","พฤ","ศ","ส"];
-const ROOM_COLORS = ["#1E88E5","#43A047","#FB8C00","#8E24AA","#E53935","#00ACC1","#6D4C41","#3949AB","#00897B","#D81B60"];
+// ชุดสีโทนพาสเทล 20 สี — จัดลำดับให้สีที่ต่างโทนกันชัดเจนอยู่ติดกันก่อน (สลับ ชมพู/ฟ้า/ส้ม/เขียว/ม่วง/เหลือง ฯลฯ)
+// เพื่อไม่ให้ห้องที่อยู่ติดกันได้สีโทนใกล้เคียงกันจนแยกยาก แม้จะมีห้องไม่เกิน 10 ห้องก็ตาม
+const ROOM_COLORS = [
+  "#FF4D8D", // ชมพูสด
+  "#4FB6E8", // ฟ้า
+  "#FF8A5C", // ส้มพีช
+  "#7FE0C0", // เขียวมิ้นท์
+  "#9C88D4", // ม่วงลาเวนเดอร์
+  "#F5E27A", // เหลืองครีม
+  "#7C9FD1", // น้ำเงินพาสเทล
+  "#E0A8DA", // ม่วงชมพู
+  "#8FD3A6", // เขียวพาสเทล
+  "#C39A72", // น้ำตาลเบจ
+  "#FFB3C7", // ชมพูอ่อน
+  "#A9DDF7", // ฟ้าอ่อน
+  "#FFC49B", // แอปริคอต
+  "#9CAF88", // เขียวเสจ
+  "#A9A6E8", // ลาเวนเดอร์ฟ้า
+  "#FFDD8C", // เหลืองอ่อน
+  "#8FDCE0", // มิ้นท์ฟ้า
+  "#C7A6EE", // ม่วงอ่อน
+  "#E3D2B4", // เบจ
+  "#A5B9C9"  // เทาอมฟ้า
+];
 // สีประจำห้อง — อิงตามลำดับห้องในระบบ (ไม่ใช่ hash) เพื่อการันตีว่าแต่ละห้องได้สีไม่ซ้ำกันแน่นอน
 // ตราบใดที่จำนวนห้องทั้งหมดไม่เกินจำนวนสีในชุดสี (10 สี)
 function roomColor(id){
@@ -641,13 +671,31 @@ async function refreshAll(){
     if(data.departments && data.departments.length){ DEPARTMENTS = [...data.departments, "อื่นๆระบุ"]; }
     HOLIDAYS = data.holidays || [];
     dataReady = true;
+    hideConnBanner(); // เชื่อมต่อกลับมาสำเร็จแล้ว เอาแบนเนอร์แจ้งเตือนที่อาจค้างอยู่ออก
     refreshRoomDependentUI();
     refreshDepartmentSelects();
     renderVisiblePages();
   }catch(err){
     console.error(err);
-    showConnectionError(err);
+    if(!dataReady){
+      // โหลดครั้งแรกล้มเหลว ไม่มีข้อมูลอะไรให้แสดงเลย จำเป็นต้องขึ้นหน้าจอ error เต็มหน้า
+      showConnectionError(err);
+    } else {
+      // มีข้อมูลแสดงอยู่แล้ว แค่รีเฟรชพื้นหลังพลาดชั่วคราว (เช่นเน็ตสะดุด) ไม่ต้องรบกวนผู้ใช้แบบเต็มหน้า
+      // แค่แจ้งเตือนเล็กๆ แล้วปล่อยให้รอบถัดไปของ polling ลองเชื่อมต่อใหม่เองอัตโนมัติ
+      showConnBanner("การเชื่อมต่อขาดหายชั่วคราว กำลังลองเชื่อมต่อใหม่...");
+    }
   }
+}
+function showConnBanner(text){
+  const el = document.getElementById("connBanner");
+  if(!el) return;
+  el.textContent = text;
+  el.classList.add("show");
+}
+function hideConnBanner(){
+  const el = document.getElementById("connBanner");
+  if(el) el.classList.remove("show");
 }
 function refreshDepartmentSelects(){
   const sel = document.getElementById("f_dept");
