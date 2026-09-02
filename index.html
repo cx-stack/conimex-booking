@@ -282,11 +282,17 @@ tr:last-child td{border-bottom:none;}
 ::-webkit-scrollbar-thumb{background:#d3d7de;border-radius:8px;}
 .hidden{display:none !important;}
 .connBanner{
-  display:none;position:fixed;top:0;left:0;right:0;z-index:600;
-  background:#FFF3CD;color:#7A5B00;text-align:center;padding:7px 12px;
-  font-size:12.5px;font-weight:700;
+  display:none;position:fixed;bottom:18px;right:18px;z-index:600;
+  background:#fff;color:var(--muted);padding:8px 14px;border-radius:20px;
+  box-shadow:0 2px 10px rgba(11,95,191,.15);
+  font-size:12px;font-weight:600;align-items:center;gap:7px;
 }
-.connBanner.show{display:block;}
+.connBanner.show{display:flex;}
+.connBanner .connDot{
+  width:7px;height:7px;border-radius:50%;background:var(--navy-2);
+  animation:connPulse 1.2s ease-in-out infinite;
+}
+@keyframes connPulse{0%,100%{opacity:.35;}50%{opacity:1;}}
 
 /* site-wide password gate */
 .siteGate{
@@ -335,7 +341,7 @@ tr:last-child td{border-bottom:none;}
     <button class="btn btn-primary" style="width:100%;" onclick="submitSiteGate()">เข้าใช้งาน</button>
   </div>
 </div>
-<div id="connBanner" class="connBanner"></div>
+<div id="connBanner" class="connBanner"><span class="connDot"></span><span id="connBannerText"></span></div>
 <div id="app" class="hidden">
   <div class="topbar">
     <button class="adminGearBtn" id="adminGearBtn" title="Admin" onclick="openAdminGate()">⚙️</button>
@@ -661,6 +667,7 @@ function normalizeEditLogRow(l){ return { ...l, oldData: safeParseJSON(l.oldData
 let modalOpen = false;
 let pollTimer = null;
 
+let connFailCount = 0; // นับจำนวนครั้งที่รีเฟรชพื้นหลังพลาดติดกัน ใช้กันไม่ให้เตือนถี่เกินจำเป็น
 async function refreshAll(){
   try{
     const data = await apiCall("list", null);
@@ -671,6 +678,7 @@ async function refreshAll(){
     if(data.departments && data.departments.length){ DEPARTMENTS = [...data.departments, "อื่นๆระบุ"]; }
     HOLIDAYS = data.holidays || [];
     dataReady = true;
+    connFailCount = 0;
     hideConnBanner(); // เชื่อมต่อกลับมาสำเร็จแล้ว เอาแบนเนอร์แจ้งเตือนที่อาจค้างอยู่ออก
     refreshRoomDependentUI();
     refreshDepartmentSelects();
@@ -682,15 +690,19 @@ async function refreshAll(){
       showConnectionError(err);
     } else {
       // มีข้อมูลแสดงอยู่แล้ว แค่รีเฟรชพื้นหลังพลาดชั่วคราว (เช่นเน็ตสะดุด) ไม่ต้องรบกวนผู้ใช้แบบเต็มหน้า
-      // แค่แจ้งเตือนเล็กๆ แล้วปล่อยให้รอบถัดไปของ polling ลองเชื่อมต่อใหม่เองอัตโนมัติ
-      showConnBanner("การเชื่อมต่อขาดหายชั่วคราว กำลังลองเชื่อมต่อใหม่...");
+      // รอให้พลาดติดกันอย่างน้อย 2 ครั้งก่อนค่อยแจ้งเตือน กันการกะพริบเตือนโดยไม่จำเป็นตอนเน็ตสะดุดแค่แป๊บเดียว
+      connFailCount++;
+      if(connFailCount >= 2){
+        showConnBanner("กำลังดึงข้อมูล...");
+      }
     }
   }
 }
 function showConnBanner(text){
   const el = document.getElementById("connBanner");
-  if(!el) return;
-  el.textContent = text;
+  const textEl = document.getElementById("connBannerText");
+  if(!el || !textEl) return;
+  textEl.textContent = text;
   el.classList.add("show");
 }
 function hideConnBanner(){
