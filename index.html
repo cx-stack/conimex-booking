@@ -924,14 +924,6 @@ async function onSubmitBooking(e){
     return;
   }
 
-  const {ds: hDs, de: hDe} = rangesForBooking(candidate);
-  for(let d=hDs; d<=hDe; ){
-    const h = isHoliday(d);
-    if(h){ showMsg("bookMsg", `ไม่สามารถจองได้ วันที่ ${fmtDateTH(d)} เป็นวันหยุด (${esc(h.label)})`); return; }
-    const dt = new Date(d); dt.setDate(dt.getDate()+1);
-    d = dt.getFullYear()+"-"+pad2(dt.getMonth()+1)+"-"+pad2(dt.getDate());
-  }
-
   const conflict = findConflict(candidate, null);
   if(conflict){
     showMsg("bookMsg", `ห้อง ${conflict.room} ถูกจองแล้วโดย "${conflict.name}" (${conflict.department}) ช่วง ${fmtDateRange(conflict)} เวลา ${fmtTimeRange(conflict)} กรุณาเลือกเวลา/ห้องอื่น`);
@@ -1225,7 +1217,7 @@ function renderCalendar(){
 function openDayModal(ds){
   const rows = bookingsOnDate(ds).filter(b=> calRoom==="all" || b.room===calRoom);
   const holiday = isHoliday(ds);
-  const holidayNote = holiday ? `<div class="msg show err" style="display:block;">🔴 วันหยุด: ${esc(holiday.label)} — ไม่สามารถจองห้องในวันนี้ได้</div>` : "";
+  const holidayNote = holiday ? `<div class="msg show err" style="display:block;">🔴 วันหยุด: ${esc(holiday.label)}</div>` : "";
   const body = `
     <div class="mhead">
       <h3>การจองวันที่ ${fmtDateTH(ds)}</h3>
@@ -1321,15 +1313,6 @@ async function submitEdit(id, btn){
   if(isPastDateTime(newStartDate, newData.timeStart)){
     showMsg("editMsg","ไม่สามารถแก้ไขไปเป็นวันหรือเวลาที่ผ่านมาแล้วได้ กรุณาเลือกวันเวลาปัจจุบันหรืออนาคต");
     return;
-  }
-  {
-    const {ds: hDs, de: hDe} = rangesForBooking(newData);
-    for(let d=hDs; d<=hDe; ){
-      const h = isHoliday(d);
-      if(h){ showMsg("editMsg", `ไม่สามารถแก้ไขได้ วันที่ ${fmtDateTH(d)} เป็นวันหยุด (${esc(h.label)})`); return; }
-      const dt = new Date(d); dt.setDate(dt.getDate()+1);
-      d = dt.getFullYear()+"-"+pad2(dt.getMonth()+1)+"-"+pad2(dt.getDate());
-    }
   }
 
   b = bookings.find(x=>x.id===id);
@@ -1683,7 +1666,7 @@ function adminHolidaysTabHtml(){
       <div class="field"><label>ชื่อวันหยุด</label><input type="text" id="admin_holiday_label" placeholder="เช่น วันหยุดปีใหม่"></div>
       <button class="btn btn-primary" onclick="adminAddHoliday(this)">เพิ่มวันหยุด</button>
     </div>
-    <p style="font-size:12px;color:var(--muted);margin-top:10px;">ระบบจะไม่อนุญาตให้จองห้องในวันที่ตั้งไว้เป็นวันหยุด</p>
+    <p style="font-size:12px;color:var(--muted);margin-top:10px;">วันที่ตั้งไว้จะขึ้นเตือนให้เห็นชัดเจนในปฏิทิน แต่ยังสามารถจองห้องในวันนั้นได้ตามปกติ</p>
   `;
 }
 function refreshCalendarIfVisible(){
