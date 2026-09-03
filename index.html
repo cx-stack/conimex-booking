@@ -649,10 +649,23 @@ setInterval(()=>{ DATETIME_SYNC_FNS.forEach(fn=>{ try{ fn(); }catch(e){} }); }, 
 
 /* ===================== APPS SCRIPT API (Google Sheets as the database) ===================== */
 // GET-only requests (no custom headers) avoid CORS-preflight issues with Apps Script Web Apps.
+const API_TIMEOUT_MS = 25000; // ถ้ารอเกิน 25 วินาทีแล้วยังไม่ได้คำตอบ ให้เลิกรอแล้วแจ้งเตือนแทนการค้างตลอดไป
 async function apiCall(action, data){
   const url = APPS_SCRIPT_URL + "?action=" + encodeURIComponent(action) +
     (data ? "&data=" + encodeURIComponent(JSON.stringify(data)) : "");
-  const res = await fetch(url);
+  const controller = new AbortController();
+  const timer = setTimeout(()=>controller.abort(), API_TIMEOUT_MS);
+  let res;
+  try{
+    res = await fetch(url, { signal: controller.signal });
+  }catch(err){
+    if(err.name === "AbortError"){
+      throw new Error("เชื่อมต่อ Apps Script ช้าเกินไป (รอเกิน 25 วินาที) — ระบบอาจบันทึกสำเร็จอยู่แล้วก็ได้ กรุณาตรวจสอบในรายการก่อนลองซ้ำ");
+    }
+    throw err;
+  }finally{
+    clearTimeout(timer);
+  }
   if(!res.ok) throw new Error("เชื่อมต่อ Apps Script ไม่สำเร็จ (HTTP "+res.status+")");
   const json = await res.json();
   if(json && json.error) throw new Error(json.error === "conflict" ? "conflict" : json.error);
@@ -950,7 +963,7 @@ async function onSubmitBooking(e){
     await saveNewBooking(booking);
   }catch(err){
     if(err.message === "conflict"){ showMsg("bookMsg","ห้องนี้เพิ่งถูกจองไปโดยคนอื่นในช่วงเวลาเดียวกัน กรุณาลองใหม่"); }
-    else { showMsg("bookMsg","บันทึกไม่สำเร็จ: "+err.message); }
+    else { showMsg("bookMsg", err.message + " — เลื่อนลงไปดูในรายการ \"แสดงการจอง\" ด้านล่างก่อนว่ามีรายการนี้ขึ้นแล้วหรือยัง ก่อนกดจองซ้ำ"); }
     return;
   }finally{
     submitBtn.disabled = false;
