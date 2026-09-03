@@ -613,7 +613,7 @@ const pad2 = n => String(n).padStart(2,"0");
 const todayStr = () => { const d=new Date(); return d.getFullYear()+"-"+pad2(d.getMonth()+1)+"-"+pad2(d.getDate()); };
 const fmtDateTH = s => { if(!s) return ""; const [y,m,d]=s.split("-"); return d+" "+MONTH_TH[parseInt(m,10)-1]+" "+y; };
 const fmtDateRange = b => b.multiDay ? (fmtDateTH(b.dateStart)+" – "+fmtDateTH(b.dateEnd)) : fmtDateTH(b.date);
-const fmtTimeRange = b => b.timeStart+" – "+b.timeEnd+(b.multiDay?" (ทุกวัน)":"");
+const fmtTimeRange = b => b.timeStart+" – "+b.timeEnd;
 const nowLabel = () => { const d=new Date(); return fmtDateTH(d.getFullYear()+"-"+pad2(d.getMonth()+1)+"-"+pad2(d.getDate()))+" "+pad2(d.getHours())+":"+pad2(d.getMinutes())+" น."; };
 const uid = () => "b"+Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 const nowHHMM = () => { const d=new Date(); return pad2(d.getHours())+":"+pad2(d.getMinutes()); };
